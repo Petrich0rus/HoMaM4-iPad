@@ -8,7 +8,7 @@ import Foundation
 /// draw items are skipped) instead of aborting the render. Not safe to call from several threads at once.
 public final class H4TerrainCompositor: @unchecked Sendable {
     /// Bytes of a 64×32 RGBA tile or mask grid, owned manually so bands can read it from several threads.
-    private final class Pixels: @unchecked Sendable {
+    final class Pixels: @unchecked Sendable {
         let p: UnsafeMutablePointer<UInt8>
         init(_ bytes: [UInt8]) { p = .allocate(capacity: bytes.count); p.initialize(from: bytes, count: bytes.count) }
         deinit { p.deallocate() }
@@ -36,14 +36,14 @@ public final class H4TerrainCompositor: @unchecked Sendable {
 
     // MARK: resolving (single-threaded)
 
-    private func tile(_ item: H4TerrainDrawItem) throws -> Pixels? {
+    func tile(_ item: H4TerrainDrawItem) throws -> Pixels? {
         let key = TileKey(texture: item.texture, index: item.tileIndex)
         if let hit = tiles[key] { return hit }
         let texture: H4TerrainTexture?
+        let name = item.texture.resourceName
         if let cached = textures[item.texture] {
             texture = cached
         } else {
-            let name = item.texture.resourceName
             do {
                 texture = try H4TerrainTexture(data: loader(name))
             } catch H4Error.notFound {
@@ -52,7 +52,11 @@ public final class H4TerrainCompositor: @unchecked Sendable {
             }
             textures[item.texture] = .some(texture)
         }
-        guard let texture, texture.tiles.indices.contains(item.tileIndex) else { return nil }
+        guard let texture else { return nil }
+        guard texture.tiles.indices.contains(item.tileIndex) else {
+            missingTextures.insert("\(name) tile \(item.tileIndex)")
+            return nil
+        }
         let made = Pixels(texture.image(ofTile: item.tileIndex).pixels)
         tiles[key] = made
         return made
@@ -90,9 +94,10 @@ public final class H4TerrainCompositor: @unchecked Sendable {
     // MARK: compositing
 
     /// Renders `region` of `level`: the scale-1 canvas (R6/R7) reduced by a `scale`×`scale` box average of the
-    /// four channels (integer floor); the image is floor(W/scale) × floor(H/scale).
+    /// four channels (integer floor); the image is floor(W/scale) × floor(H/scale). `objects` (slice 6a-O) are drawn
+    /// over the terrain of each band, in list order, before the reduction.
     public func render(terrain: H4ScenarioTerrain, level: Int, region: H4MapTerrainRender.Region,
-                       scale k: Int = 1) throws -> H4RGBAImage {
+                       scale k: Int = 1, objects: H4ObjectDrawList? = nil) throws -> H4RGBAImage {
         guard (0..<terrain.levels).contains(level) else { throw H4Error.malformed("level \(level) outside 0..<\(terrain.levels)") }
         guard k >= 1, region.rows >= 1, region.columns >= 1 else { throw H4Error.malformed("empty region or scale") }
         let W = region.canvasWidth, H = region.canvasHeight
@@ -126,6 +131,11 @@ public final class H4TerrainCompositor: @unchecked Sendable {
                 for (n, items) in passes.enumerated() {
                     for i in range(items, y0, y0 + bh) {
                         Self.draw(items[i], base: n == 0, canvas: canvas, width: W, y0: y0, rows: bh)
+                    }
+                }
+                if let objects {
+                    for item in objects.items where item.top < y0 + bh && item.top + item.pixels.height > y0 {
+                        H4MapObjectRender.draw(item, canvas: canvas, width: W, y0: y0, rows: bh)
                     }
                 }
                 Self.reduce(canvas, width: W, scale: k, outWidth: outW, outRows: o1 - o0,

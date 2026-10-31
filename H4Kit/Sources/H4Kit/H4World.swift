@@ -243,6 +243,14 @@ public struct H4ObjectSprite: Sendable, Equatable {
     public let originY: Int32
     public let name: String?
 
+    /// Sprite header u16 #1 (reader 0x749b20 -> +0x4c): 1 = no base layers, 2 = base layers present.
+    /// nil when the sprite version is below 3 (no header).
+    public var mode: UInt16? { extra.count == 3 ? extra[0] : nil }
+    /// Header u16 #2 (+0x4e): index of the `base_frame` layer in `frames.layers`; nil if absent (65535) or no header.
+    public var baseFrameIndex: Int? { extra.count == 3 && extra[1] != 0xFFFF ? Int(extra[1]) : nil }
+    /// Header u16 #3 (+0x50): index of the `base_shadow` layer in `frames.layers`; nil if absent (65535) or no header.
+    public var baseShadowIndex: Int? { extra.count == 3 && extra[2] != 0xFFFF ? Int(extra[2]) : nil }
+
     static func read(_ r: inout ByteReader, version: UInt16) throws -> H4ObjectSprite {
         var extra: [UInt16] = []
         if version > 2 { extra = [try r.u16(), try r.u16(), try r.u16()] }
@@ -266,6 +274,11 @@ public struct H4AdventureObject: Sendable {
     public let blockedCells: [Bool]
     /// Classification triple (id, name), e.g. (80, "sphinx"); empty names when unused.
     public let classification: [(id: UInt16, name: String)]
+    /// Draw-layer byte (version >= 4): 0 small items, 1 normal, 2 bridges and fields (ground objects).
+    /// Versions below 4 do not store it; 1 is reported then [I], as the reference renderer does.
+    public let drawLayer: UInt8
+    /// Owner-flag attach point (version >= 5, present only on ownable models): offset from the object anchor.
+    public let flagAttachPoint: (dx: Int32, dy: Int32)?
     public let imageKind: UInt8
     public let sprite: H4ObjectSprite
     /// Kind-0 images only: one depth value per 32-pixel column (draw ordering).
@@ -305,10 +318,17 @@ public struct H4AdventureObject: Sendable {
             for _ in 0..<3 { classes.append((try r.u16(), try r.string16())) }
         }
         classification = classes
+        var layer: UInt8 = 1
         if version >= 4 {
-            guard try r.u8() <= 2 else { throw H4Error.malformed("adventure object layer value") }
+            layer = try r.u8()
+            guard layer <= 2 else { throw H4Error.malformed("adventure object layer value") }
         }
-        if version >= 5, try r.u8() != 0 { _ = try r.u32(); _ = try r.u32() }
+        drawLayer = layer
+        if version >= 5, try r.u8() != 0 {
+            flagAttachPoint = (try r.i32(), try r.i32())
+        } else {
+            flagAttachPoint = nil
+        }
 
         imageKind = try r.u8()
         guard imageKind <= 1 else { throw H4Error.malformed("adventure object image kind \(imageKind)") }

@@ -177,6 +177,10 @@ campaigns, scenario versions other than 27/29.
   random window of the texture per 4×4-cell chunk (deterministic function, not bit-exact with the game), transitions
   (`transition.Transitions.h4d`: 15 sets × 93 masks, 1 or 4 bits per pixel) and roads. Identical pixel for pixel
   to the Python reference (`Research/`) on the test areas.
+- **Objects** (`H4MapObjectRender`): sprite anchored on the top vertex of the object's cell (x = row, y = column),
+  shadows first, then 32-px vertical strips sorted by depth (one depth per sprite column, `adv_object`
+  table), ground objects (bridges, fields) underneath; frame 1 of the animation. Identical to the Python reference.
 - Known gaps: the magic terrains (12–14) use a different tile layout; road "kind 3" and the road
-  sub-variant are inferred.
+  sub-variant are inferred; not drawn yet: armies/heroes, owner flags, animation; the editor's markers
+  for random objects ("Ville", "Monstre"…) appear as they are (replaced when a game starts).
 - Images produced from the game stay outside the repository (`out/` is ignored).
