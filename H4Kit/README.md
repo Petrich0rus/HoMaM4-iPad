@@ -184,3 +184,15 @@ campaigns, scenario versions other than 27/29.
   sub-variant are inferred; not drawn yet: armies/heroes, owner flags, animation; the editor's markers
   for random objects ("Ville", "Monstre"…) appear as they are (replaced when a game starts).
 - Images produced from the game stay outside the repository (`out/` is ignored).
+
+## iPad map screen (step 1, H4App)
+
+- Opening a map from the list: the static map (terrain + objects) is drawn by the H4Kit renderer in
+  512-px tiles (`CATiledLayer`, `UIScrollView`): scrolling with inertia, pinch zoom (whole map → 2×), double tap,
+  surface/underground toggle, long press → card (cell, terrain, object and its class).
+- The renderer is thread-safe (one lock around the caches; parallel drawing), tested under Thread Sanitizer.
+- DEBUG test `-H4AutoTour`: opens the 166 levels of the 105 maps one after another (whole view then 1:1),
+  logs `TOUR ok/fail/done` and the time per tile; ~36 ms median per tile, ~130 MB of memory in the simulator.
+- Known limits: double tap never driven by a tool; zoomed-out tiles slower (0.2–0.6 s) on large
+  maps; a single memory crash seen once (attributed to clearing the tile layer while it was drawing, removed since;
+  4 clean full runs since then); performance on a real iPad not measured.

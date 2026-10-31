@@ -30,7 +30,9 @@ struct MapDetailView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .navigationBarTitleDisplayMode(.inline)
-        .fullScreenCover(isPresented: $showMap) { MapView(title: entry.title) }
+        .fullScreenCover(isPresented: $showMap) {
+            if let store = library.store { MapScreen(entry: entry, store: store) }
+        }
         .task { await loadMinimaps() }
     }
 

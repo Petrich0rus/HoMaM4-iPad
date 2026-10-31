@@ -165,7 +165,7 @@ private func solidTexture(_ rgb: (UInt8, UInt8, UInt8)) -> Data {
 
 /// Size-8 map, level 0: grass everywhere; every cell has a water overlay (set slot 0, mask 0), cell (4, 4) a gravel
 /// road (kind 0) and cell (4, 5) a cobblestone road (kind 2), both mask 0 of slot 10 ("road 1").
-private func syntheticMap() throws -> H4ScenarioTerrain {
+func syntheticMap() throws -> H4ScenarioTerrain {
     let g = H4MapGeometry(size: 8)
     var cells = Data()
     for (r, range) in g.cellRows.enumerated() {
@@ -181,7 +181,7 @@ private func syntheticMap() throws -> H4ScenarioTerrain {
     return try H4ScenarioTerrain(scenario: scenario)
 }
 
-private func syntheticCompositor(maskAlpha: UInt8) throws -> H4TerrainCompositor {
+func syntheticCompositor(maskAlpha: UInt8) throws -> H4TerrainCompositor {
     let four = maskBytes(bitsPerPixel: 4) { _, _ in maskAlpha }
     let sets = H4MapTerrainRender.maskSetNames.map { ($0, [(UInt32(0), 4, four)]) }
     let lib = try H4TransitionLibrary(data: transitionFile(sets: sets))

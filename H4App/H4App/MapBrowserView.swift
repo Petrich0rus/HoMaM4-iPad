@@ -5,6 +5,9 @@ struct MapBrowserView: View {
     @EnvironmentObject var library: GameLibrary
     @State var selection: MapEntry.ID?
     @State private var search = ""
+    #if DEBUG
+    @State private var touring = false
+    #endif
 
     private var filtered: [MapEntry] {
         search.isEmpty ? library.maps : library.maps.filter {
@@ -30,6 +33,10 @@ struct MapBrowserView: View {
             }
         }
         .onAppear(perform: selectFromLaunchArgument)
+        #if DEBUG
+        .onAppear { if AutoTour.isRequested { touring = true } }
+        .fullScreenCover(isPresented: $touring) { AutoTourView() }
+        #endif
     }
 }
 

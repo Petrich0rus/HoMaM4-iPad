@@ -10,6 +10,8 @@ final class GameLibrary: ObservableObject {
     @Published var maps: [MapEntry] = []
     @Published var scanProgress: (done: Int, total: Int)?
     private(set) var renderer: MinimapRenderer?
+    /// The game archives, shared by the minimaps and every open map.
+    private(set) var store: H4ResourceStore?
     private var root: URL?
 
     init() {
@@ -53,6 +55,7 @@ final class GameLibrary: ObservableObject {
         GameLocation.forget()
         maps = []
         renderer = nil
+        store = nil
         root = nil
         state = .needsFolder
     }
@@ -60,18 +63,19 @@ final class GameLibrary: ObservableObject {
     private func open(_ root: URL) async {
         self.root = root
         state = .loading("Opening archives…")
-        let opened = await Task.detached { () -> Result<(MinimapRenderer, URL), Error> in
+        let opened = await Task.detached { () -> Result<(H4ResourceStore, URL), Error> in
             Result {
                 guard let data = GameLocation.child(of: root, named: "Data"),
                       let maps = GameLocation.child(of: root, named: "maps") else { throw H4Error.malformed("missing Data or maps") }
-                return (MinimapRenderer(store: try H4ResourceStore(dataDirectory: data)), maps)
+                return (try H4ResourceStore(dataDirectory: data), maps)
             }
         }.value
         switch opened {
         case .failure(let error):
             state = .failed("Cannot open the game data: \(error)")
-        case .success(let (renderer, mapsDir)):
-            self.renderer = renderer
+        case .success(let (store, mapsDir)):
+            self.store = store
+            self.renderer = MinimapRenderer(store: store)
             state = .loading("Reading maps…")
             maps = await scan(mapsDir)
             scanProgress = nil

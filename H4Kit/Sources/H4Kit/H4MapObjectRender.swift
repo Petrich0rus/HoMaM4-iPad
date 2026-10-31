@@ -247,13 +247,13 @@ public enum H4MapObjectRender {
 
     // MARK: O5
 
-    /// Blits `item` into `canvas` (RGBA, `width` wide, holding canvas rows y0 ..< y0 + rows).
-    static func draw(_ item: H4ObjectDrawItem, canvas: UnsafeMutablePointer<UInt8>, width W: Int, y0: Int, rows: Int) {
+    /// Blits `item` into `canvas` (RGBA, `width` wide, holding canvas columns x0 ..< x0 + width of rows y0 ..< y0 + rows).
+    static func draw(_ item: H4ObjectDrawItem, canvas: UnsafeMutablePointer<UInt8>, width W: Int, x0: Int = 0, y0: Int, rows: Int) {
         let L = item.pixels
         let shadow = item.kind == .shadow
         let lo = max(0, y0 - item.top), hi = min(L.height, y0 + rows - item.top)
         guard lo < hi else { return }
-        var xmin = 0, xmax = W
+        var xmin = x0, xmax = x0 + W
         if let clip = item.clip { xmin = max(xmin, clip.lowerBound); xmax = min(xmax, clip.upperBound) }
         L.indices.withUnsafeBufferPointer { idx in
           L.alphas.withUnsafeBufferPointer { alphas in
@@ -262,7 +262,7 @@ public enum H4MapObjectRender {
                     let span = L.spans[ly]
                     let c0 = max(span.start, xmin - item.left), c1 = min(span.end, xmax - item.left)
                     guard c0 < c1 else { continue }
-                    let row = canvas + ((item.top + ly - y0) * W + item.left) * 4
+                    let row = canvas + ((item.top + ly - y0) * W + item.left - x0) * 4
                     for c in c0..<c1 {
                         let i = span.offset + c - span.start
                         let a = Int(alphas[i])
