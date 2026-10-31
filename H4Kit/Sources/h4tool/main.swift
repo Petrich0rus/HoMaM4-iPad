@@ -25,6 +25,11 @@ usage:
   h4tool gamestart <Data-dir> <map.h4c> --seed N --difficulty D [--out file.json]
                                                start a game on a scenario (random objects resolved, rules of slice 7a) and
                                                write the canonical JSON (stdout without --out); D 0 easy ... 4 impossible
+  h4tool moves <Data-dir> <maps-dir> --queries q.json --out a.json [--seed N --difficulty D]
+                                               answer movement queries (rules of slice 7b) on the started games (default seed 12345,
+                                               difficulty 2); canonical JSON, stdout without --out
+  h4tool towns <Data-dir> <maps-dir> [--out t.json] [--seed N --difficulty D]
+                                               per town: first free outside entrance cell and reachability of the town cell
   h4tool render-all <Data-dir> <maps-dir> <out-dir> [--scale k] [--no-objects]
                                                render every level of every scenario (.h4c, recursive) to
                                                <out-dir>/<map path>.L<level>.png (exit 2 on any failure or missing resource)
@@ -407,6 +412,36 @@ do {
         let tables = try H4GameTables(store: store)
         let game = try H4GameStart.start(scenario: scenario, store: store, tables: tables, seed: seed, difficulty: difficulty)
         let text = game.canonicalJSON()
+        if let outPath { try Data(text.utf8).write(to: URL(fileURLWithPath: outPath)) } else { FileHandle.standardOutput.write(Data(text.utf8)) }
+
+    case ("moves", 2...), ("towns", 2...):
+        var seed: UInt32 = 12345, difficulty = 2, outPath: String?, queriesPath: String?
+        var g = 2
+        while g < rest.count {
+            guard g + 1 < rest.count else { fail(usage) }
+            switch rest[g] {
+            case "--seed":
+                let t = rest[g + 1]
+                guard let v = t.lowercased().hasPrefix("0x") ? Int(t.dropFirst(2), radix: 16) : Int(t) else { fail(usage) }
+                seed = UInt32(truncatingIfNeeded: v)
+            case "--difficulty":
+                guard let d = Int(rest[g + 1]), (0...4).contains(d) else { fail(usage) }
+                difficulty = d
+            case "--out": outPath = rest[g + 1]
+            case "--queries": queriesPath = rest[g + 1]
+            default: fail(usage)
+            }
+            g += 2
+        }
+        let session = try H4MovementSession(dataDirectory: URL(fileURLWithPath: rest[0]), mapsDirectory: URL(fileURLWithPath: rest[1]),
+                                            seed: seed, difficulty: difficulty)
+        let text: String
+        if command == "moves" {
+            guard let queriesPath else { fail(usage) }
+            text = try session.answersJSON(queries: Data(contentsOf: URL(fileURLWithPath: queriesPath)))
+        } else {
+            text = try session.townsJSON()
+        }
         if let outPath { try Data(text.utf8).write(to: URL(fileURLWithPath: outPath)) } else { FileHandle.standardOutput.write(Data(text.utf8)) }
 
     default:

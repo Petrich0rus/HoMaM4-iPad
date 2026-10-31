@@ -272,6 +272,10 @@ public struct H4AdventureObject: Sendable {
     public let height: Int
     /// One flag per footprint cell (row-major): cells the object occupies/blocks.
     public let blockedCells: [Bool]
+    /// Entrance edges (edge flag 1 only, else nil): `edgesHorizontal` has (height + 1) × width bits, index j × width + i;
+    /// `edgesVertical` has (width + 1) × height bits, index i × height + j. Only the boundary lines are used by movement.
+    public let edgesHorizontal: [Bool]?
+    public let edgesVertical: [Bool]?
     /// Classification triple (id, name), e.g. (80, "sphinx"); empty names when unused.
     public let classification: [(id: UInt16, name: String)]
     /// Draw-layer byte (version >= 4): 0 small items, 1 normal, 2 bridges and fields (ground objects).
@@ -303,9 +307,11 @@ public struct H4AdventureObject: Sendable {
         blockedCells = try bits(width * height)
         if edgeFlag < 1 {
             _ = try bits(width * height)
+            edgesHorizontal = nil
+            edgesVertical = nil
         } else {
-            _ = try bits((height + 1) * width)
-            _ = try bits((width + 1) * height)
+            edgesHorizontal = try bits((height + 1) * width)
+            edgesVertical = try bits((width + 1) * height)
         }
         if version > 5 {
             _ = try bits(2 * (height + 1) * width)

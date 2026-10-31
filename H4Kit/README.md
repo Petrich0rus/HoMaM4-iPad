@@ -196,3 +196,22 @@ campaigns, scenario versions other than 27/29.
 - Known limits: double tap never driven by a tool; zoomed-out tiles slower (0.2–0.6 s) on large
   maps; a single memory crash seen once (attributed to clearing the tile layer while it was drawing, removed since;
   4 clean full runs since then); performance on a real iPad not measured.
+
+## Starting a game and moving around (step 2)
+
+```bash
+.build/release/h4tool gamestart <Data> <map.h4c> --seed N --difficulty D     # random objects resolved
+.build/release/h4tool moves     <Data> <maps-dir> --queries q.json --out a.json
+.build/release/h4tool towns     <Data> <maps-dir> --out t.json
+```
+
+- **Starting a game** (`H4Game`, `H4GameStart`): the game's MSVC random generator, every random object
+  (towns, monsters and their size by difficulty, dwellings, artifacts, resources, shrines, teachers…)
+  resolved as the exe does; identical to the Python reference on 105 maps × several seeds and difficulties.
+  The stats come from the `table.*` tables of the player's data; only identifier name tables from the exe
+  are in the code. Not yet: starting resources, starting hero for a player without one, the
+  editor's deletion markers ("Editor.Bomb", likely deletes the object underneath at game start).
+- **Movement** (`H4Movement`): passable cells, object entrances (edges), costs per terrain (grass 100,
+  swamp 200, snow 175…), roads 75/100, diagonals ×1.5, 2256 points per day, path search (Dijkstra in the
+  exe's order), split into days. Identical to the reference on 2,836 trips; ~0.7 ms for a trip across a
+  304 map. Not yet: boats, skills (Pathfinding…), artifacts, path arrows.
