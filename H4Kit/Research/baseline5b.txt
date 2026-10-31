@@ -1,0 +1,106 @@
+# population 105
+A Land without a King.h4c	objstart=192	count=3213	decoded=3213	stop=233260	complete	mismatch=0
+A Tale of Two Enemies.h4c	objstart=215	count=614	decoded=614	stop=50679	complete	mismatch=0
+Ancestral Home.h4c	objstart=192	count=1297	decoded=1297	stop=96519	complete	mismatch=0
+Bandits of the Rifen Maze.h4c	objstart=1039	count=5007	decoded=5007	stop=384842	complete	mismatch=0
+Barbarians from Below.h4c	objstart=423	count=2353	decoded=2353	stop=190592	complete	mismatch=0
+Beebee and the Three Pigs.h4c	objstart=10013	count=5672	decoded=5672	stop=426715	complete	mismatch=0
+Beyond the lake.h4c	objstart=277	count=665	decoded=665	stop=49414	complete	mismatch=0
+Boring's Mountain.h4c	objstart=284	count=2678	decoded=2678	stop=195328	complete	mismatch=0
+Chasing Reptiles.h4c	objstart=195	count=1236	decoded=1236	stop=98165	complete	mismatch=0
+Conquest of Four lakes.h4c	objstart=221	count=3962	decoded=3962	stop=294627	complete	mismatch=0
+Contest Maps/Black Jack.h4c	objstart=579	count=535	decoded=535	stop=73705	complete	mismatch=0
+Contest Maps/Cat and Mouse.h4c	objstart=2897	count=1395	decoded=1395	stop=114018	complete	mismatch=0
+Contest Maps/Dannte.h4c	objstart=224	count=836	decoded=836	stop=82475	complete	mismatch=0
+Contest Maps/Diaspora.h4c	objstart=2273	count=15588	decoded=15588	stop=1182330	complete	mismatch=0
+Contest Maps/Final Grounds.h4c	objstart=714	count=1588	decoded=1588	stop=122402	complete	mismatch=0
+Contest Maps/Heart of Winter.h4c	objstart=349	count=2111	decoded=2111	stop=170146	complete	mismatch=0
+Contest Maps/Internal Conflict.h4c	objstart=2284	count=3579	decoded=3579	stop=267911	complete	mismatch=0
+Contest Maps/Peasants Revolt.h4c	objstart=463	count=1445	decoded=1445	stop=111900	complete	mismatch=0
+Contest Maps/Season of Sorrow.h4c	objstart=1302	count=7858	decoded=7858	stop=559569	complete	mismatch=0
+Contest Maps/Seven Steps To Glory.h4c	objstart=345	count=3352	decoded=3352	stop=278586	complete	mismatch=0
+Contest Maps/Shadowsinforest.h4c	objstart=1447	count=3363	decoded=3363	stop=254834	complete	mismatch=0
+Contest Maps/Split Personalities.h4c	objstart=1260	count=2065	decoded=2065	stop=151898	complete	mismatch=0
+Contest Maps/The Desert and the Jungle.h4c	objstart=473	count=2003	decoded=2003	stop=145617	complete	mismatch=0
+Contest Maps/The Eye of the Beholder.h4c	objstart=1369	count=2051	decoded=2051	stop=163005	complete	mismatch=0
+Contest Maps/The Four Horsemen.h4c	objstart=1711	count=3520	decoded=3520	stop=262566	complete	mismatch=0
+Contest Maps/The Middle.h4c	objstart=4860	count=4891	decoded=4891	stop=359438	complete	mismatch=0
+Contest Maps/The Pains of Glory.h4c	objstart=1504	count=9595	decoded=9595	stop=685489	complete	mismatch=0
+Contest Maps/The Pass.h4c	objstart=814	count=2088	decoded=2088	stop=162776	complete	mismatch=0
+Contest Maps/Vengeance of the Undead.h4c	objstart=692	count=5564	decoded=5564	stop=418350	complete	mismatch=0
+Contest Maps/Who First.h4c	objstart=2257	count=5207	decoded=5207	stop=418929	complete	mismatch=0
+Cross Island.h4c	objstart=502	count=3801	decoded=3801	stop=274107	complete	mismatch=0
+Danger in the Trees.h4c	objstart=2940	count=1618	decoded=1618	stop=124605	complete	mismatch=0
+Death from Above.h4c	objstart=559	count=1343	decoded=1343	stop=108247	complete	mismatch=0
+Demonary of Doom.h4c	objstart=1926	count=2249	decoded=2249	stop=172090	complete	mismatch=0
+Dog Days.h4c	objstart=227	count=1945	decoded=1945	stop=147062	complete	mismatch=0
+Dungeon Crawl.h4c	objstart=1488	count=3183	decoded=3183	stop=247941	complete	mismatch=0
+Escape from Biggun's Playground.h4c	objstart=2954	count=1614	decoded=1614	stop=126019	complete	mismatch=0
+Field of Life.h4c	objstart=160	count=3441	decoded=3441	stop=251699	complete	mismatch=0
+Fire and Ice.h4c	objstart=408	count=2261	decoded=2261	stop=172251	complete	mismatch=0
+Forest Frenzy.h4c	objstart=683	count=2058	decoded=2058	stop=147766	complete	mismatch=0
+Gold Rush.h4c	objstart=166	count=1867	decoded=1867	stop=150608	complete	mismatch=0
+Gory Days.h4c	objstart=973	count=1813	decoded=1813	stop=155640	complete	mismatch=0
+Griffin's Gold.h4c	objstart=166	count=1682	decoded=1682	stop=133702	complete	mismatch=0
+Gulf of Nayr.h4c	objstart=316	count=3273	decoded=3273	stop=235807	complete	mismatch=0
+Harpy Horde (Allied).h4c	objstart=409	count=2885	decoded=2885	stop=225579	complete	mismatch=0
+Harpy Horde.h4c	objstart=374	count=2884	decoded=2884	stop=225093	complete	mismatch=0
+Head of the Dragon.h4c	objstart=1503	count=1597	decoded=1597	stop=122642	complete	mismatch=0
+Hell hath no fury.h4c	objstart=712	count=412	decoded=412	stop=37810	complete	mismatch=0
+Horseplay.h4c	objstart=160	count=1883	decoded=1883	stop=140943	complete	mismatch=0
+Ice Age.h4c	objstart=166	count=2558	decoded=2558	stop=198514	complete	mismatch=0
+In War with the In-Laws.h4c	objstart=5301	count=3543	decoded=3543	stop=274052	complete	mismatch=0
+Jester's Revenge.h4c	objstart=163	count=2250	decoded=2250	stop=171996	complete	mismatch=0
+Jungle Fever.h4c	objstart=223	count=4562	decoded=4562	stop=298406	complete	mismatch=0
+Just Another Mine War.h4c	objstart=1985	count=2764	decoded=2764	stop=226141	complete	mismatch=0
+Knight Time.h4c	objstart=166	count=3452	decoded=3452	stop=256481	complete	mismatch=0
+Knight's Gauntlet.h4c	objstart=363	count=1114	decoded=1114	stop=93928	complete	mismatch=0
+Land of our Forefathers.h4c	objstart=168	count=6410	decoded=6410	stop=475396	complete	mismatch=0
+Land of the Lamp.h4c	objstart=238	count=1676	decoded=1676	stop=122664	complete	mismatch=0
+Last Man Standing.h4c	objstart=1018	count=3446	decoded=3446	stop=266062	complete	mismatch=0
+Lucky Charm.h4c	objstart=166	count=2737	decoded=2737	stop=204796	complete	mismatch=0
+Mage Realm.h4c	objstart=472	count=4375	decoded=4375	stop=342449	complete	mismatch=0
+Magic Middle (allied).h4c	objstart=557	count=4814	decoded=4814	stop=364643	complete	mismatch=0
+Magic Middle.h4c	objstart=415	count=4817	decoded=4817	stop=364621	complete	mismatch=0
+Magic Plains.h4c	objstart=320	count=3923	decoded=3923	stop=285523	complete	mismatch=0
+Manifestations.h4c	objstart=468	count=1348	decoded=1348	stop=106554	complete	mismatch=0
+Maranthea's Isle.h4c	objstart=466	count=1393	decoded=1393	stop=104121	complete	mismatch=0
+Marauders of the High Seas.h4c	objstart=1227	count=1478	decoded=1478	stop=107517	complete	mismatch=0
+Midnight Mayhem.h4c	objstart=166	count=1848	decoded=1848	stop=143611	complete	mismatch=0
+Nature's Revenge.h4c	objstart=172	count=5557	decoded=5557	stop=389940	complete	mismatch=0
+Nefilis's rescue.h4c	objstart=1008	count=1715	decoded=1715	stop=138474	complete	mismatch=0
+Neutral Colors.h4c	objstart=169	count=4352	decoded=4352	stop=321812	complete	mismatch=0
+Parental Guidance.h4c	objstart=339	count=3367	decoded=3367	stop=256654	complete	mismatch=0
+Petty Claustrophobia.h4c	objstart=2674	count=1278	decoded=1278	stop=103684	complete	mismatch=0
+Return of the Devil.h4c	objstart=1473	count=1544	decoded=1544	stop=117884	complete	mismatch=0
+Revolution.h4c	objstart=2425	count=1763	decoded=1763	stop=135093	complete	mismatch=0
+River Crossing.h4c	objstart=163	count=2554	decoded=2554	stop=197382	complete	mismatch=0
+Rock and a Hard Place.h4c	objstart=221	count=4736	decoded=4736	stop=336674	complete	mismatch=0
+Run! Cronx is coming!.h4c	objstart=749	count=1050	decoded=1050	stop=85478	complete	mismatch=0
+Sandstorm.h4c	objstart=288	count=2005	decoded=2005	stop=150648	complete	mismatch=0
+Sanral's Charge.h4c	objstart=1687	count=9427	decoded=9427	stop=705242	complete	mismatch=0
+Sea Politics.h4c	objstart=1232	count=5760	decoded=5760	stop=444748	complete	mismatch=0
+Search for the Old Heroes 2.h4c	objstart=3509	count=2342	decoded=2342	stop=194501	complete	mismatch=0
+Search for the Old Heroes.h4c	objstart=7514	count=5860	decoded=5860	stop=455040	complete	mismatch=0
+Siren's Song.h4c	objstart=163	count=3144	decoded=3144	stop=226027	complete	mismatch=0
+Sisters of Might and Magic.h4c	objstart=852	count=9127	decoded=9127	stop=666970	complete	mismatch=0
+Six Lords at War.h4c	objstart=382	count=2231	decoded=2231	stop=175147	complete	mismatch=0
+Skull and Crossbones.h4c	objstart=462	count=1695	decoded=1695	stop=132065	complete	mismatch=0
+Straight of Sharks.h4c	objstart=236	count=1600	decoded=1600	stop=130755	complete	mismatch=0
+The Beowulf Tales.h4c	objstart=1645	count=1578	decoded=1578	stop=127359	complete	mismatch=0
+The Dragon's Wrath.h4c	objstart=436	count=4115	decoded=4115	stop=317894	complete	mismatch=0
+The Great Wumpus Hunt.h4c	objstart=1310	count=2285	decoded=2285	stop=178265	complete	mismatch=0
+The Main Road to Victory.h4c	objstart=511	count=2680	decoded=2680	stop=198322	complete	mismatch=0
+The Ultimate Mug of Ale.h4c	objstart=4261	count=2426	decoded=2426	stop=187015	complete	mismatch=0
+Three Queens.h4c	objstart=1275	count=960	decoded=960	stop=79716	complete	mismatch=0
+Turtle Island.h4c	objstart=169	count=1947	decoded=1947	stop=154792	complete	mismatch=0
+Unhappy Times.h4c	objstart=3192	count=7831	decoded=7831	stop=574305	complete	mismatch=0
+Uninvited Guest.h4c	objstart=413	count=2390	decoded=2390	stop=182289	complete	mismatch=0
+Valleys of the Damned (Allied).h4c	objstart=553	count=5902	decoded=5902	stop=450736	complete	mismatch=0
+Valleys of the Damned.h4c	objstart=541	count=5902	decoded=5902	stop=450724	complete	mismatch=0
+War Chest.h4c	objstart=163	count=2275	decoded=2275	stop=162280	complete	mismatch=0
+Wheel-of-Misfortune (Allied).h4c	objstart=365	count=2693	decoded=2693	stop=193857	complete	mismatch=0
+Wheel-of-Misfortune.h4c	objstart=365	count=2694	decoded=2694	stop=193937	complete	mismatch=0
+Witch Hunt.h4c	objstart=541	count=1798	decoded=1798	stop=144508	complete	mismatch=0
+Wizard City.h4c	objstart=163	count=2499	decoded=2499	stop=186119	complete	mismatch=0
+Zanfas's Challenge.h4c	objstart=1252	count=11308	decoded=11308	stop=875796	complete	mismatch=0

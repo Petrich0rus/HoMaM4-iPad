@@ -1,0 +1,22 @@
+# Game files: never in the repository (the app uses the player's own copy)
+*.dmg
+*.h4r
+*.h4c
+*.h4d
+*.exe
+*.dll
+heroes4*
+advobj/
+
+# Build output
+.build/
+.build-ios/
+.swiftpm/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
