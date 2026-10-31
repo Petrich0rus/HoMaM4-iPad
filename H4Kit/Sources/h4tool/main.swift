@@ -22,6 +22,9 @@ usage:
                                                composite the terrain (bases, transitions, roads) and the objects of one level
                                                (default: level 0, whole map, scale 1; k in 1,2,4,8); --drawlist writes the
                                                object draw list as JSON [kind, model, x, y, layerIndex, column|null]
+  h4tool gamestart <Data-dir> <map.h4c> --seed N --difficulty D [--out file.json]
+                                               start a game on a scenario (random objects resolved, rules of slice 7a) and
+                                               write the canonical JSON (stdout without --out); D 0 easy ... 4 impossible
   h4tool render-all <Data-dir> <maps-dir> <out-dir> [--scale k] [--no-objects]
                                                render every level of every scenario (.h4c, recursive) to
                                                <out-dir>/<map path>.L<level>.png (exit 2 on any failure or missing resource)
@@ -381,6 +384,30 @@ do {
         models.missingModels.sorted().forEach { print("  MISSING model \($0)") }
         if failed > 0 || rendered != levels || !compositor.missingTextures.isEmpty || !compositor.missingMasks.isEmpty
             || !models.missingModels.isEmpty { exit(2) }
+
+    case ("gamestart", 2...):
+        var seed: UInt32?, difficulty: Int?, outPath: String?
+        var g = 2
+        while g < rest.count {
+            guard g + 1 < rest.count else { fail(usage) }
+            switch rest[g] {
+            case "--seed":
+                let t = rest[g + 1]
+                guard let v = t.lowercased().hasPrefix("0x") ? Int(t.dropFirst(2), radix: 16) : Int(t) else { fail(usage) }
+                seed = UInt32(truncatingIfNeeded: v)
+            case "--difficulty": difficulty = Int(rest[g + 1])
+            case "--out": outPath = rest[g + 1]
+            default: fail(usage)
+            }
+            g += 2
+        }
+        guard let seed, let difficulty, (0...4).contains(difficulty) else { fail(usage) }
+        let store = try H4ResourceStore(dataDirectory: URL(fileURLWithPath: rest[0]))
+        let scenario = try H4Scenario(fileData: Data(contentsOf: URL(fileURLWithPath: rest[1])))
+        let tables = try H4GameTables(store: store)
+        let game = try H4GameStart.start(scenario: scenario, store: store, tables: tables, seed: seed, difficulty: difficulty)
+        let text = game.canonicalJSON()
+        if let outPath { try Data(text.utf8).write(to: URL(fileURLWithPath: outPath)) } else { FileHandle.standardOutput.write(Data(text.utf8)) }
 
     default:
         fail(usage)
