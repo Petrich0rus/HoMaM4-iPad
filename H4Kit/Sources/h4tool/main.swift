@@ -18,6 +18,12 @@ usage:
   h4tool check-body <Data-dir> <maps-dir>      check that the object list of every scenario ends exactly where
                                                its terrain starts (exit 2 on any mismatch or failure)
   h4tool minimap <Data-dir> <map.h4c> <out-prefix>  terrain minimap PNG per level (colours from the game textures)
+  h4tool render  <Data-dir> <map.h4c> <out.png> [--level L] [--cells r0 c0 nr nc] [--scale k]
+                                               composite the terrain (bases, transitions, roads) of one level
+                                               (default: level 0, whole map, scale 1; k in 1,2,4,8)
+  h4tool render-all <Data-dir> <maps-dir> <out-dir> [--scale k]
+                                               render every level of every scenario (.h4c, recursive) to
+                                               <out-dir>/<map path>.L<level>.png (exit 2 on any failure or missing resource)
 """
 
 /// Decodes one image-bearing resource into named images, or nil if its type has no images.
@@ -263,6 +269,82 @@ do {
         }
         failures.prefix(20).forEach { print("  FAIL \($0)") }
         if !failures.isEmpty { exit(2) }
+
+    case ("render", 3...):
+        var level = 0, cells: [Int]?, scale = 1
+        var i = 3
+        func intArgs(_ n: Int) -> [Int] {
+            guard i + n < rest.count else { fail(usage) }
+            let v = rest[(i + 1)...(i + n)].compactMap { Int($0) }
+            guard v.count == n else { fail(usage) }
+            i += n + 1
+            return v
+        }
+        while i < rest.count {
+            switch rest[i] {
+            case "--level": level = intArgs(1)[0]
+            case "--scale": scale = intArgs(1)[0]
+            case "--cells": cells = intArgs(4)
+            default: fail(usage)
+            }
+        }
+        guard [1, 2, 4, 8].contains(scale) else { fail("--scale must be 1, 2, 4 or 8") }
+        let store = try H4ResourceStore(dataDirectory: URL(fileURLWithPath: rest[0]))
+        let scenario = try H4Scenario(fileData: Data(contentsOf: URL(fileURLWithPath: rest[1])))
+        let terrain = try H4ScenarioTerrain(scenario: scenario)
+        let region = cells.map { H4MapTerrainRender.Region(row: $0[0], column: $0[1], rows: $0[2], columns: $0[3]) }
+            ?? .whole(size: scenario.size)
+        let compositor = try H4TerrainCompositor(store: store)
+        let clock = ContinuousClock()
+        var image: H4RGBAImage?
+        let elapsed = try clock.measure { image = try compositor.render(terrain: terrain, level: level, region: region, scale: scale) }
+        try image!.pngData().write(to: URL(fileURLWithPath: rest[2]))
+        print("wrote \(rest[2]) (\(image!.width)×\(image!.height)) in \(elapsed)")
+        print("# missing textures \(compositor.missingTextures.count), missing masks \(compositor.missingMasks.count)")
+        compositor.missingTextures.sorted().forEach { print("  MISSING texture \($0)") }
+        compositor.missingMasks.sorted().forEach { print("  MISSING mask \($0)") }
+        if !compositor.missingTextures.isEmpty || !compositor.missingMasks.isEmpty { exit(2) }
+
+    case ("render-all", 3...):
+        var scale = 1
+        if rest.count == 5, rest[3] == "--scale", let k = Int(rest[4]) { scale = k } else if rest.count != 3 { fail(usage) }
+        guard [1, 2, 4, 8].contains(scale) else { fail("--scale must be 1, 2, 4 or 8") }
+        let store = try H4ResourceStore(dataDirectory: URL(fileURLWithPath: rest[0]))
+        let compositor = try H4TerrainCompositor(store: store)
+        let dir = URL(fileURLWithPath: rest[1]), outDir = URL(fileURLWithPath: rest[2])
+        let paths = mapPaths(in: rest[1])
+        var rendered = 0, levels = 0, failed = 0
+        for rel in paths {
+            do {
+                let scenario = try H4Scenario(fileData: Data(contentsOf: dir.appendingPathComponent(rel)))
+                let terrain = try H4ScenarioTerrain(scenario: scenario)
+                let stem = String(rel.dropLast(4))
+                let file = outDir.appendingPathComponent(stem).deletingLastPathComponent()
+                try FileManager.default.createDirectory(at: file, withIntermediateDirectories: true)
+                for level in 0..<terrain.levels {
+                    levels += 1
+                    do {
+                        let image = try compositor.render(terrain: terrain, level: level, region: .whole(size: scenario.size), scale: scale)
+                        let expected = (32 * 2 * scenario.size / scale, 16 * 2 * scenario.size / scale)
+                        guard (image.width, image.height) == expected else { throw H4Error.malformed("size \(image.width)×\(image.height), expected \(expected)") }
+                        let name = outDir.appendingPathComponent("\(stem).L\(level).png")
+                        try image.pngData().write(to: name)
+                        rendered += 1
+                        print("\(rel)\tL\(level)\t\(image.width)×\(image.height)")
+                    } catch {
+                        failed += 1
+                        print("\(rel)\tL\(level)\tFAIL \(error)")
+                    }
+                }
+            } catch {
+                failed += 1
+                print("\(rel)\tFAIL \(error)")
+            }
+        }
+        print("# rendered \(rendered)/\(levels) levels, missing textures \(compositor.missingTextures.count), missing masks \(compositor.missingMasks.count)")
+        compositor.missingTextures.sorted().forEach { print("  MISSING texture \($0)") }
+        compositor.missingMasks.sorted().forEach { print("  MISSING mask \($0)") }
+        if failed > 0 || rendered != levels || !compositor.missingTextures.isEmpty || !compositor.missingMasks.isEmpty { exit(2) }
 
     default:
         fail(usage)

@@ -165,3 +165,18 @@ independent Python implementation (`Research/`).
 
 Not done yet: identification of terrain types 9–18, textured rendering, multi-map
 campaigns, scenario versions other than 27/29.
+
+## Map rendering (step 1)
+
+```bash
+.build/release/h4tool render     <Data> <map.h4c> out.png [--level L] [--cells r0 c0 nr nc] [--scale 1|2|4|8]
+.build/release/h4tool render-all <Data> <maps-dir> <outdir> [--scale k]     # 105 maps, ~10 s at scale 4
+```
+
+- **Terrain** (`H4MapTerrainRender`, `H4TerrainCompositor`, `H4TransitionLibrary`): base tile chosen from a
+  random window of the texture per 4×4-cell chunk (deterministic function, not bit-exact with the game), transitions
+  (`transition.Transitions.h4d`: 15 sets × 93 masks, 1 or 4 bits per pixel) and roads. Identical pixel for pixel
+  to the Python reference (`Research/`) on the test areas.
+- Known gaps: the magic terrains (12–14) use a different tile layout; road "kind 3" and the road
+  sub-variant are inferred.
+- Images produced from the game stay outside the repository (`out/` is ignored).
