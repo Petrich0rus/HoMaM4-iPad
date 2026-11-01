@@ -68,6 +68,8 @@ public struct H4MoveOutcome: Sendable, Equatable {
     public var picked: Int?
     /// Movement points charged.
     public var spent: Int
+    /// v2 ruleset: index of the own town the army entered (it stops on the previous cell and becomes its visitor), if any.
+    public var visited: Int? = nil
 }
 
 /// A pickup object of a level and the cells a plan can end on to collect it.
@@ -119,14 +121,17 @@ public final class H4GameSession {
     private let makeWorld: (Int, [H4MovePlaced]) -> H4MoveWorld
 
     public let players: [Int]
-    private let humans: [Int]
-    public private(set) var currentPlayer: Int
-    public private(set) var day = 1, week = 1, month = 1
-    private var armyStates: [Int: ArmyState] = [:]
-    private var resourceStore: [Int: H4SessionResources] = [:]
-    private var backpacks: [Int: [Int]] = [:]
-    private var removed: Set<Int> = []
-    private var selected: Int?
+    let humans: [Int]
+    public internal(set) var currentPlayer: Int
+    public internal(set) var day = 1, week = 1, month = 1
+    var armyStates: [Int: ArmyState] = [:]
+    var resourceStore: [Int: H4SessionResources] = [:]
+    var backpacks: [Int: [Int]] = [:]
+    var removed: Set<Int> = []
+    var selected: Int?
+    /// Towns, economy and army slots (slice 8a); nil under the v1 ruleset.
+    var townWorld: H4TownWorld?
+    public private(set) var ruleset = H4Ruleset.v1
     private var plannedAnswer: H4MoveAnswer?
     private var worlds: [Int: H4MoveWorld] = [:]
     private var placed: [Int: [(id: Int, placed: H4MovePlaced)]] = [:]
@@ -134,7 +139,9 @@ public final class H4GameSession {
     // MARK: construction
 
     /// A session of a started game. `tables` defaults to the tables read from `resources`.
-    public convenience init(game: H4Game, scenario: H4Scenario, resources: H4ResourceStore, tables: H4GameTables? = nil) throws {
+    /// `ruleset` v1 (default) is the frozen 7d-L session; v2 adds the towns and the economy of slice 8a.
+    public convenience init(game: H4Game, scenario: H4Scenario, resources: H4ResourceStore, tables: H4GameTables? = nil,
+                            ruleset: H4Ruleset = .v1) throws {
         let body = try H4ScenarioBody(scenario: scenario, resources: resources)
         guard case .complete = body.stop else { throw H4Error.malformed("object list stopped at \(body.stop.offset)") }
         let terrain = try H4ScenarioTerrain(scenario: scenario)
@@ -163,6 +170,15 @@ public final class H4GameSession {
         self.init(players: game.players.map { ($0.colour, $0.human) }, objects: list, levels: scenario.levels,
                   artifactIDByModel: tables.artifactIDByModel, scenarioObjects: body.objects,
                   world: { level, placed in H4MoveWorld(terrain: terrain, level: level, placed: placed) })
+        if ruleset == .v2 {
+            let townTables = try H4TownTables(store: resources, tables: tables)
+            var world = try H4TownWorld(game: game, scenario: scenario, objects: body.objects,
+                                        armies: armyStates.mapValues(\.owner), tables: townTables)
+            for p in H4TownWorld.players(game: game, scenario: scenario) { resourceStore[p.colour] = H4SessionResources(amounts: p.start) }
+            world.clearVisits()
+            townWorld = world
+            self.ruleset = .v2
+        }
     }
 
     /// Core initialiser (also used by the synthetic tests).
@@ -299,22 +315,31 @@ public final class H4GameSession {
         let last = path[taken]
         var end = last
         var picked: Int?
+        var visit: Int?
         if taken == n && w.kind[w.index(last.r, last.c)] == 2 {
             end = path[n - 1]
-            if let oid = entryObject(level: a.level, world: w, from: path[n - 1], to: last), pickup(oid, by: sel) { picked = oid }
+            if let oid = entryObject(level: a.level, world: w, from: path[n - 1], to: last) {
+                if townWorld?.towns[oid] != nil { visit = oid } else if pickup(oid, by: sel) { picked = oid }
+            }
         }
         a.cell = end
         a.points = max(0, a.points - spent)
         armyStates[sel] = a
         worlds[a.level] = nil
         plannedAnswer = nil
-        return H4MoveOutcome(ok: true, why: nil, steps: taken, picked: picked, spent: spent)
+        var visited: Int?
+        if townWorld != nil {                                       // v2 R5 VISITING [I]
+            for i in townWorld!.townOrder where townWorld!.towns[i]!.visitingArmy == sel { townWorld!.towns[i]!.visitingArmy = nil }
+            if let v = visit, townWorld!.towns[v]!.owner == a.owner { townWorld!.towns[v]!.visitingArmy = sel; visited = v }
+        }
+        return H4MoveOutcome(ok: true, why: nil, steps: taken, picked: picked, spent: spent, visited: visited)
     }
 
     /// Next player; after the last human the day advances and every army's points are reset (rule 2).
     public func endTurn() {
         selected = nil
         plannedAnswer = nil
+        townWorld?.clearVisits()
         if let last = humans.last, currentPlayer != last {
             currentPlayer = humans[humans.firstIndex(of: currentPlayer)! + 1]
             return
@@ -326,6 +351,9 @@ public final class H4GameSession {
             if week == 5 { week = 1; month += 1 }
         }
         for id in armyStates.keys { armyStates[id]!.points = Self.fullPoints }
+        if townWorld != nil {                                       // v2 R3: day tick, D = days elapsed after the advance
+            townWorld!.dayTick(day: (day - 1) + 7 * (week - 1) + 28 * (month - 1), resources: &resourceStore)
+        }
     }
 
     // MARK: pickups (rule 5)
@@ -512,6 +540,7 @@ extension H4GameSession {
         if let s = selected, let a = armyStates[s] {
             o["cell"] = .cell(a.cell); o["level"] = .int(a.level); o["points"] = .int(a.points)
         }
+        if let w = townWorld { o.merge(w.logFields()) { a, _ in a } }
         return o
     }
 
@@ -520,7 +549,9 @@ extension H4GameSession {
         guard let op = command["op"] as? String else { throw H4Error.malformed("script command without op") }
         var rec: [String: H4LogJSON] = ["op": .str(op)]
         var why: H4SessionWhy?
-        for k in ["army", "to"] { if let v = command[k] { rec[k] = try H4LogJSON(echo: v) } }       // the command's own argument, as given
+        var townWhy: String?
+        let townOp = townWorld != nil && ["build", "recruit", "transfer"].contains(op)
+        if !townOp { for k in ["army", "to"] { if let v = command[k] { rec[k] = try H4LogJSON(echo: v) } } }       // the command's own argument, as given
         switch op {
         case "select":
             guard let id = command["army"] as? Int else { throw H4Error.malformed("select without army") }
@@ -537,12 +568,19 @@ extension H4GameSession {
             let m = move()
             why = m.why
             rec["steps"] = .int(m.steps); rec["picked"] = m.picked.map { .int($0) } ?? .null; rec["spent"] = .int(m.spent)
+            if townWorld != nil { rec["visited"] = m.visited.map { .int($0) } ?? .null }
+        case _ where townOp:
+            for k in ["town", "building", "count", "from", "to"] { if let v = command[k] { rec[k] = try H4LogJSON(echo: v) } }
+            let r = townCommand(op, command)
+            townWhy = r.ok ? nil : (r.why ?? "")
+            if op == "recruit" { rec["recruited"] = .int(r.count ?? 0) } else if op == "transfer" { rec["moved"] = .int(r.count ?? 0) }
         case "endturn": endTurn()
         case "state": break
         default: throw H4Error.malformed("unknown op '\(op)'")
         }
-        rec["ok"] = .bool(why == nil)
-        rec["why"] = why.map { .str($0.rawValue) } ?? .null
+        let whyText = townWhy ?? why?.rawValue
+        rec["ok"] = .bool(whyText == nil)
+        rec["why"] = whyText.map { .str($0) } ?? .null
         for (k, v) in logState() { rec[k] = v }
         return .obj(rec)
     }
@@ -553,5 +591,43 @@ extension H4GameSession {
             throw H4Error.malformed("script is not a JSON list of commands")
         }
         return H4LogJSON.arr(try list.map { try run(command: $0) }).text
+    }
+}
+
+// MARK: - Town commands (slice 8a, v2 ruleset)
+
+extension H4GameSession {
+    /// The towns in object order (empty under the v1 ruleset).
+    public var towns: [H4TownState] { townWorld.map { w in w.townOrder.map { w.towns[$0]! } } ?? [] }
+
+    /// Slots of an army of the session (7), nil under v1 or for an unknown id.
+    public func slots(army id: Int) -> [H4SlotStack]? { townWorld?.slots[id] }
+
+    /// Runs a v2 town command given as a script dictionary.
+    func townCommand(_ op: String, _ command: [String: Any]) -> H4TownOp {
+        guard townWorld != nil else { return H4TownOp(ok: false, why: "bad-ruleset", count: nil) }
+        switch op {
+        case "build": return townWorld!.build(command, current: currentPlayer, resources: &resourceStore)
+        case "recruit": return townWorld!.recruit(command, current: currentPlayer, resources: &resourceStore)
+        default: return townWorld!.transfer(command, current: currentPlayer)
+        }
+    }
+
+    /// R4: builds `building` in town `town` for the current player.
+    @discardableResult
+    public func build(town: Int, building: Int) -> H4TownOp { townCommand("build", ["town": town, "building": building]) }
+
+    /// R5: recruits `count` creatures of dwelling `building` of the town into its garrison.
+    @discardableResult
+    public func recruit(town: Int, building: Int, count: Int) -> H4TownOp {
+        townCommand("recruit", ["town": town, "building": building, "count": count])
+    }
+
+    /// R5: moves creatures between garrisons / armies; a container is `["town": i, "slot": s]` or `["army": id, "slot": s]`.
+    @discardableResult
+    public func transfer(from: [String: Int], to: [String: Int], count: Int? = nil) -> H4TownOp {
+        var c: [String: Any] = ["from": from, "to": to]
+        if let count { c["count"] = count }
+        return townCommand("transfer", c)
     }
 }

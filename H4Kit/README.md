@@ -224,6 +224,26 @@ campaigns, scenario versions other than 27/29.
   pickups (resources, artifacts, chests, campfires — amounts inferred, documented), end of turn. Identical to
   the Python reference on 10 scenarios (more than 600 commands).
 
+## Towns, economy and building rules (step 3, slice 8a)
+
+```bash
+.build/release/h4tool play       <Data> <maps-dir> <map-name> --script s.json [--out log.json] [--ruleset v2|v1]
+.build/release/h4tool towns-init <Data> <maps-dir> [--out t.json]
+```
+
+- **Session v2** (`H4GameSession(..., ruleset: .v2)`, `h4tool play`, default): starting resources by team and difficulty, towns
+  (`H4Town.swift`: state, build / recruit / transfer, visiting hero, day tick) and economy (`H4GameEconomy.swift`: town and mine income,
+  creature growth, Order treasury, weekly generators, peasants, computer-player bonus). Commands `build`, `recruit`, `transfer`; every log
+  record gains `towns`, `armies`, `gens` (move records `visited`). `--ruleset v1` / the default of the Swift API is the frozen 7d-L session.
+- Identical byte for byte to the frozen reference `session2_ref.py` on 9 town / economy scripts, the 5 step-2 scripts re-run under v2, and
+  (v1) the 5 frozen step-2 logs; `towns-init` reproduces the initial state of the 657 towns of the 105 maps.
+- Costs of buildings come from `table.buildings` (runtime parser `H4BuildingTable`), growth and creature costs from `table.creatures`. The
+  tables that exist only in the executable are embedded with their address (`// [D] exe 0x...`): requirement trees (0xacfbe0), static
+  buildable sets (0xacfbb0), building keywords (0x97dcf8...), dwelling creatures (0x9853d0), starting resources (0x98e9e8), mine incomes
+  (0x98cbb8), generator pots (0x997ff0), computer multipliers (0x979acc, 0x979b60), treasury rate (0xacffe8).
+- Inferred / pinned [I] as in the reference: default-built dwelling count and no `rand`, the other-might-grail growth bonus (+25), hero-skill
+  term 0, generators pay on their first tick without the 50 % roll, `allowed` used as an extra filter, visiting rules, taxpayers after pass B.
+
 ## Playing on iPad (step 2, H4App)
 
 "New game" on a map's page (difficulty, seed): game screen with a SwiftUI bar (day/week/month, colour of the

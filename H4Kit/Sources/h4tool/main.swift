@@ -33,9 +33,12 @@ usage:
                                                difficulty 2); canonical JSON, stdout without --out
   h4tool towns <Data-dir> <maps-dir> [--out t.json] [--seed N --difficulty D]
                                                per town: first free outside entrance cell and reachability of the town cell
-  h4tool play    <Data-dir> <maps-dir> <map-name> --script s.json [--out log.json]
-                                               play a script (select/plan/move/endturn/state, slice 7d-L) on the started game
-                                               (seed 12345, difficulty 2) and write the canonical log (stdout without --out)
+  h4tool play    <Data-dir> <maps-dir> <map-name> --script s.json [--out log.json] [--ruleset v1|v2]
+                                               play a script on the started game (seed 12345, difficulty 2) and write the canonical
+                                               log (stdout without --out). v2 (default, slice 8a): select/plan/move/endturn/state plus
+                                               build/recruit/transfer, starting resources, towns and day income; v1: the 7d-L session
+  h4tool towns-init <Data-dir> <maps-dir> [--out t.json]
+                                               initial state of the towns of every map (slice 8a, seed 12345, difficulty 2)
   h4tool play    <Data-dir> --arrows arrows.json  check the path arrow names (and that each exists in the resource store);
                                                prints `arrows: K/N ok, missing M`, exit 0 only if all ok
   h4tool render-all <Data-dir> <maps-dir> <out-dir> [--scale k] [--no-objects] [--game --seed N --difficulty D]
@@ -509,13 +512,16 @@ do {
 
     case ("play", 2...):
         var scriptPath: String?, outPath: String?, arrowsPath: String?
+        var ruleset = H4Ruleset.v2
         var positional: [String] = []
         var g = 0
         while g < rest.count {
             switch rest[g] {
-            case "--script", "--out", "--arrows":
+            case "--script", "--out", "--arrows", "--ruleset":
                 guard g + 1 < rest.count else { fail(usage) }
-                if rest[g] == "--script" { scriptPath = rest[g + 1] } else if rest[g] == "--out" { outPath = rest[g + 1] } else { arrowsPath = rest[g + 1] }
+                if rest[g] == "--script" { scriptPath = rest[g + 1] } else if rest[g] == "--out" { outPath = rest[g + 1] }
+                else if rest[g] == "--ruleset" { guard let r = H4Ruleset(rawValue: rest[g + 1]) else { fail(usage) }; ruleset = r }
+                else { arrowsPath = rest[g + 1] }
                 g += 2
             default: positional.append(rest[g]); g += 1
             }
@@ -549,10 +555,21 @@ do {
             }
             let scenario = try H4Scenario(fileData: Data(contentsOf: URL(fileURLWithPath: files[0])))
             let game = try H4GameStart.start(scenario: scenario, store: host.store, tables: host.tables, seed: host.seed, difficulty: host.difficulty)
-            let session = try H4GameSession(game: game, scenario: scenario, resources: host.store, tables: host.tables)
+            let session = try H4GameSession(game: game, scenario: scenario, resources: host.store, tables: host.tables, ruleset: ruleset)
             let text = try session.runScript(Data(contentsOf: URL(fileURLWithPath: scriptPath)))
             if let outPath { try Data(text.utf8).write(to: URL(fileURLWithPath: outPath)) } else { FileHandle.standardOutput.write(Data(text.utf8)) }
         }
+
+    case ("towns-init", 2...):
+        var outPath: String?
+        var g = 2
+        while g < rest.count {
+            guard rest[g] == "--out", g + 1 < rest.count else { fail(usage) }
+            outPath = rest[g + 1]
+            g += 2
+        }
+        let text = try H4TownsInit.json(dataDirectory: URL(fileURLWithPath: rest[0]), mapsDirectory: URL(fileURLWithPath: rest[1]))
+        if let outPath { try Data(text.utf8).write(to: URL(fileURLWithPath: outPath)) } else { FileHandle.standardOutput.write(Data(text.utf8)) }
 
     default:
         fail(usage)
