@@ -46,6 +46,8 @@ public final class H4ObjectModel: @unchecked Sendable {
     public let originX: Int, originY: Int
     public let layers: [LayerInfo]
     public let columnDepths: [Int16]
+    /// Owner-flag attach point (slice 7c, G2): the model's header point as signed offsets, nil on models without one.
+    public let flagPoint: (dx: Int, dy: Int)?
     /// O3: indices of the layers drawn in the static frame 1: bodies (`base_frame*` then `frame <nums>` listing 1) …
     public let bodyLayers: [Int]
     /// … and shadows (`base_shadow*` then `shadow <nums>` listing 1).
@@ -61,12 +63,32 @@ public final class H4ObjectModel: @unchecked Sendable {
         imageKind = o.imageKind; drawLayer = o.drawLayer
         originX = Int(o.sprite.originX); originY = Int(o.sprite.originY)
         columnDepths = o.columnDepths
+        flagPoint = o.flagAttachPoint.map { (Int($0.dx), Int($0.dy)) }
         let group = o.sprite.frames.layers
         layers = group.map { LayerInfo(name: $0.name, left: $0.left, top: $0.top, right: $0.right, bottom: $0.bottom, isEmpty: $0.isEmpty) }
         bodyLayers = Self.pick(layers, "frame")
         shadowLayers = Self.pick(layers, "shadow")
         let frames = layers.filter { !$0.isEmpty && ($0.name.hasPrefix("base_frame") || $0.name.hasPrefix("frame ")) }
         leftmostFrameEdge = frames.map(\.left).min().map { $0 + Int(o.sprite.originX) }
+        var made: [Int: H4ObjectLayerPixels] = [:]
+        for k in bodyLayers + shadowLayers { made[k] = H4ObjectLayerPixels(group[k]) }
+        pixels = made
+    }
+
+    /// A one-cell actor sprite (slice 7c, G4): the frame-1 layers of an `actor_sequence`, no footprint, no depth columns.
+    init(name: String, sequence s: H4ActorSequence) {
+        self.name = name
+        width = 1; height = 1
+        imageKind = 0; drawLayer = 1
+        originX = Int(s.originX); originY = Int(s.originY)
+        columnDepths = []
+        flagPoint = nil
+        let group = s.frames.layers
+        layers = group.map { LayerInfo(name: $0.name, left: $0.left, top: $0.top, right: $0.right, bottom: $0.bottom, isEmpty: $0.isEmpty) }
+        bodyLayers = Self.pick(layers, "frame")
+        shadowLayers = Self.pick(layers, "shadow")
+        let frames = layers.filter { !$0.isEmpty && ($0.name.hasPrefix("base_frame") || $0.name.hasPrefix("frame ")) }
+        leftmostFrameEdge = frames.map(\.left).min().map { $0 + Int(s.originX) }
         var made: [Int: H4ObjectLayerPixels] = [:]
         for k in bodyLayers + shadowLayers { made[k] = H4ObjectLayerPixels(group[k]) }
         pixels = made
@@ -127,7 +149,7 @@ public final class H4ObjectModelLibrary: @unchecked Sendable {
 
 /// One entry of the object draw list.
 public struct H4ObjectDrawItem: Sendable {
-    public enum Kind: String, Sendable { case shadow, body }
+    public enum Kind: String, Sendable { case shadow, body, flag }
     public var kind: Kind
     public var model: String
     /// Object position (row, column).
@@ -149,6 +171,8 @@ public struct H4ObjectDrawList: Sendable {
     public var items: [H4ObjectDrawItem] = []
     /// Number of scenario objects drawn (after O2).
     public var objectCount = 0
+    /// Armies drawn (started game, slice 7c); 0 for the step-1 draw list.
+    public var armyCount = 0
 
     /// The reference JSON shape: `[kind, model, x, y, layerIndex, column | null]` per item.
     public func json() throws -> Data {

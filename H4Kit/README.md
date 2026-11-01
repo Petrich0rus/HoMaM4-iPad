@@ -215,3 +215,7 @@ campaigns, scenario versions other than 27/29.
   swamp 200, snow 175…), roads 75/100, diagonals ×1.5, 2256 points per day, path search (Dijkstra in the
   exe's order), split into days. Identical to the reference on 2,836 trips; ~0.7 ms for a trip across a
   304 map. Not yet: boats, skills (Pathfinding…), artifacts, path arrows.
+- **Started game** (`H4GameRender`, `h4tool render --game --seed N --difficulty D`): random objects drawn with
+  their real model, armies and heroes (animated `adv_actor` sprite, frame 1, facing south-east),
+  boats, owner flags (`animation.Flags.<colour>`, gray for neutral) on owned buildings and on heroes; the
+  editor's markers (bomb, events, obelisk markers) are hidden. Identical to the Python reference on 10 areas.

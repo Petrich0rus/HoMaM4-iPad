@@ -19,9 +19,12 @@ usage:
                                                its terrain starts (exit 2 on any mismatch or failure)
   h4tool minimap <Data-dir> <map.h4c> <out-prefix>  terrain minimap PNG per level (colours from the game textures)
   h4tool render  <Data-dir> <map.h4c> <out.png> [--level L] [--cells r0 c0 nr nc] [--scale k] [--no-objects] [--drawlist out.json]
+                 [--game --seed N --difficulty D]
                                                composite the terrain (bases, transitions, roads) and the objects of one level
                                                (default: level 0, whole map, scale 1; k in 1,2,4,8); --drawlist writes the
-                                               object draw list as JSON [kind, model, x, y, layerIndex, column|null]
+                                               object draw list as JSON [kind, model, x, y, layerIndex, column|null];
+                                               --game renders the STARTED game (slice 7c: random objects resolved, armies,
+                                               owner flags); --seed and --difficulty (0...4) are then required
   h4tool gamestart <Data-dir> <map.h4c> --seed N --difficulty D [--out file.json]
                                                start a game on a scenario (random objects resolved, rules of slice 7a) and
                                                write the canonical JSON (stdout without --out); D 0 easy ... 4 impossible
@@ -30,7 +33,7 @@ usage:
                                                difficulty 2); canonical JSON, stdout without --out
   h4tool towns <Data-dir> <maps-dir> [--out t.json] [--seed N --difficulty D]
                                                per town: first free outside entrance cell and reachability of the town cell
-  h4tool render-all <Data-dir> <maps-dir> <out-dir> [--scale k] [--no-objects]
+  h4tool render-all <Data-dir> <maps-dir> <out-dir> [--scale k] [--no-objects] [--game --seed N --difficulty D]
                                                render every level of every scenario (.h4c, recursive) to
                                                <out-dir>/<map path>.L<level>.png (exit 2 on any failure or missing resource)
 """
@@ -75,6 +78,11 @@ func completeObjects(of scenario: H4Scenario, resolver: H4ObjectClassResolver) t
     let body = try H4ScenarioBody(scenario: scenario, resolver: resolver)
     guard case .complete = body.stop else { throw H4Error.malformed("object list stopped at \(body.stop.offset)") }
     return body.objects
+}
+
+/// `--seed N` (decimal or 0x…) of the command line.
+func parseSeed(_ t: String) -> UInt32? {
+    (t.lowercased().hasPrefix("0x") ? Int(t.dropFirst(2), radix: 16) : Int(t)).map { UInt32(truncatingIfNeeded: $0) }
 }
 
 func fail(_ message: String) -> Never {
@@ -288,6 +296,7 @@ do {
 
     case ("render", 3...):
         var level = 0, cells: [Int]?, scale = 1, objectsOn = true, drawlist: String?
+        var gameOn = false, gameSeed: UInt32?, gameDifficulty: Int?
         var i = 3
         func intArgs(_ n: Int) -> [Int] {
             guard i + n < rest.count else { fail(usage) }
@@ -302,6 +311,11 @@ do {
             case "--scale": scale = intArgs(1)[0]
             case "--cells": cells = intArgs(4)
             case "--no-objects": objectsOn = false; i += 1
+            case "--game": gameOn = true; i += 1
+            case "--seed":
+                guard i + 1 < rest.count, let v = parseSeed(rest[i + 1]) else { fail(usage) }
+                gameSeed = v; i += 2
+            case "--difficulty": gameDifficulty = intArgs(1)[0]
             case "--drawlist":
                 guard i + 1 < rest.count else { fail(usage) }
                 drawlist = rest[i + 1]; i += 2
@@ -309,6 +323,9 @@ do {
             }
         }
         guard [1, 2, 4, 8].contains(scale) else { fail("--scale must be 1, 2, 4 or 8") }
+        if gameOn {
+            guard gameSeed != nil, let d = gameDifficulty, (0...4).contains(d), objectsOn else { fail(usage) }
+        } else if gameSeed != nil || gameDifficulty != nil { fail(usage) }
         let store = try H4ResourceStore(dataDirectory: URL(fileURLWithPath: rest[0]))
         let scenario = try H4Scenario(fileData: Data(contentsOf: URL(fileURLWithPath: rest[1])))
         let terrain = try H4ScenarioTerrain(scenario: scenario)
@@ -316,11 +333,19 @@ do {
             ?? .whole(size: scenario.size)
         let compositor = try H4TerrainCompositor(store: store)
         let models = H4ObjectModelLibrary(store: store)
+        var gameRender: H4GameRender?
         let clock = ContinuousClock()
         var image: H4RGBAImage?
         var list: H4ObjectDrawList?
         let elapsed = try clock.measure {
-            if objectsOn || drawlist != nil {
+            if gameOn {
+                let tables = try H4GameTables(store: store)
+                let game = try H4GameStart.start(scenario: scenario, store: store, tables: tables, seed: gameSeed!, difficulty: gameDifficulty!)
+                let objects = try completeObjects(of: scenario, resolver: H4ObjectClassResolver(resources: store))
+                let renderer = H4GameRender(store: store, tables: tables, models: models)
+                gameRender = renderer
+                list = try renderer.drawList(objects: objects, game: game, level: level, region: region)
+            } else if objectsOn || drawlist != nil {
                 let objects = try completeObjects(of: scenario, resolver: H4ObjectClassResolver(resources: store))
                 list = try H4MapObjectRender.drawList(objects: objects, level: level, region: region, models: models)
             }
@@ -330,26 +355,46 @@ do {
         try image!.pngData().write(to: URL(fileURLWithPath: rest[2]))
         if let drawlist, let list { try list.json().write(to: URL(fileURLWithPath: drawlist)) }
         print("wrote \(rest[2]) (\(image!.width)×\(image!.height)) in \(elapsed)")
-        if let list { print("# objects \(list.objectCount), draw items \(list.items.count)") }
-        print("# missing textures \(compositor.missingTextures.count), missing masks \(compositor.missingMasks.count), missing models \(models.missingModels.count)")
+        if let list {
+            if let gameRender {
+                print("# objects \(list.objectCount), armies \(list.armyCount), flags \(list.items.filter { $0.kind == .flag }.count), draw items \(list.items.count)")
+            } else { print("# objects \(list.objectCount), draw items \(list.items.count)") }
+        }
+        print("# missing textures \(compositor.missingTextures.count), missing masks \(compositor.missingMasks.count), missing models \(models.missingModels.count)"
+              + (gameRender.map { ", missing actors \($0.missingActors.count), missing sequences \($0.missingSequences.count), missing flags \($0.missingFlags.count)" } ?? ""))
         compositor.missingTextures.sorted().forEach { print("  MISSING texture \($0)") }
         compositor.missingMasks.sorted().forEach { print("  MISSING mask \($0)") }
         models.missingModels.sorted().forEach { print("  MISSING model \($0)") }
-        if !compositor.missingTextures.isEmpty || !compositor.missingMasks.isEmpty || !models.missingModels.isEmpty { exit(2) }
+        gameRender?.missingActors.sorted().forEach { print("  MISSING actor \($0)") }
+        gameRender?.missingSequences.sorted().forEach { print("  MISSING sequence \($0)") }
+        gameRender?.missingFlags.sorted().forEach { print("  MISSING flag \($0)") }
+        if !compositor.missingTextures.isEmpty || !compositor.missingMasks.isEmpty || !models.missingModels.isEmpty
+            || !(gameRender?.missingActors.isEmpty ?? true) || !(gameRender?.missingSequences.isEmpty ?? true)
+            || !(gameRender?.missingFlags.isEmpty ?? true) { exit(2) }
 
     case ("render-all", 3...):
         var scale = 1, objectsOn = true
+        var gameOn = false, gameSeed: UInt32?, gameDifficulty: Int?
         var j = 3
         while j < rest.count {
             if rest[j] == "--scale", j + 1 < rest.count, let k = Int(rest[j + 1]) { scale = k; j += 2 }
             else if rest[j] == "--no-objects" { objectsOn = false; j += 1 }
+            else if rest[j] == "--game" { gameOn = true; j += 1 }
+            else if rest[j] == "--seed", j + 1 < rest.count, let v = parseSeed(rest[j + 1]) { gameSeed = v; j += 2 }
+            else if rest[j] == "--difficulty", j + 1 < rest.count, let d = Int(rest[j + 1]) { gameDifficulty = d; j += 2 }
             else { fail(usage) }
         }
         guard [1, 2, 4, 8].contains(scale) else { fail("--scale must be 1, 2, 4 or 8") }
+        if gameOn {
+            guard gameSeed != nil, let d = gameDifficulty, (0...4).contains(d), objectsOn else { fail(usage) }
+        } else if gameSeed != nil || gameDifficulty != nil { fail(usage) }
+        let wall = ContinuousClock.now
         let store = try H4ResourceStore(dataDirectory: URL(fileURLWithPath: rest[0]))
         let compositor = try H4TerrainCompositor(store: store)
         let models = H4ObjectModelLibrary(store: store)
         let resolver = H4ObjectClassResolver(resources: store)
+        let tables = gameOn ? try H4GameTables(store: store) : nil
+        let gameRender = tables.map { H4GameRender(store: store, tables: $0, models: models) }
         let dir = URL(fileURLWithPath: rest[1]), outDir = URL(fileURLWithPath: rest[2])
         let paths = mapPaths(in: rest[1])
         var rendered = 0, levels = 0, failed = 0
@@ -358,6 +403,7 @@ do {
                 let scenario = try H4Scenario(fileData: Data(contentsOf: dir.appendingPathComponent(rel)))
                 let terrain = try H4ScenarioTerrain(scenario: scenario)
                 let objects = objectsOn ? try completeObjects(of: scenario, resolver: resolver) : []
+                let game = try tables.map { try H4GameStart.start(scenario: scenario, store: store, tables: $0, seed: gameSeed!, difficulty: gameDifficulty!) }
                 let stem = String(rel.dropLast(4))
                 let file = outDir.appendingPathComponent(stem).deletingLastPathComponent()
                 try FileManager.default.createDirectory(at: file, withIntermediateDirectories: true)
@@ -365,7 +411,9 @@ do {
                     levels += 1
                     do {
                         let region = H4MapTerrainRender.Region.whole(size: scenario.size)
-                        let list = objectsOn ? try H4MapObjectRender.drawList(objects: objects, level: level, region: region, models: models) : nil
+                        let list: H4ObjectDrawList?
+                        if let gameRender, let game { list = try gameRender.drawList(objects: objects, game: game, level: level, region: region) }
+                        else { list = objectsOn ? try H4MapObjectRender.drawList(objects: objects, level: level, region: region, models: models) : nil }
                         let image = try compositor.render(terrain: terrain, level: level, region: region, scale: scale, objects: list)
                         let expected = (32 * 2 * scenario.size / scale, 16 * 2 * scenario.size / scale)
                         guard (image.width, image.height) == expected else { throw H4Error.malformed("size \(image.width)×\(image.height), expected \(expected)") }
@@ -383,12 +431,22 @@ do {
                 print("\(rel)\tFAIL \(error)")
             }
         }
-        print("# rendered \(rendered)/\(levels) levels, missing textures \(compositor.missingTextures.count), missing masks \(compositor.missingMasks.count), missing models \(models.missingModels.count)")
+        let missing = (a: gameRender?.missingActors ?? [], s: gameRender?.missingSequences ?? [], f: gameRender?.missingFlags ?? [])
+        if gameOn {
+            let secs = (ContinuousClock.now - wall).components
+            let wallSeconds = Double(secs.seconds) + Double(secs.attoseconds) / 1e18
+            print("# rendered \(rendered)/\(levels) levels, missing textures \(compositor.missingTextures.count), missing masks \(compositor.missingMasks.count), missing models \(models.missingModels.count), missing actors \(missing.a.count), missing sequences \(missing.s.count), missing flags \(missing.f.count), failed levels \(failed), wall \(String(format: "%.1f", wallSeconds)) s")
+        } else {
+            print("# rendered \(rendered)/\(levels) levels, missing textures \(compositor.missingTextures.count), missing masks \(compositor.missingMasks.count), missing models \(models.missingModels.count)")
+        }
         compositor.missingTextures.sorted().forEach { print("  MISSING texture \($0)") }
         compositor.missingMasks.sorted().forEach { print("  MISSING mask \($0)") }
         models.missingModels.sorted().forEach { print("  MISSING model \($0)") }
+        missing.a.sorted().forEach { print("  MISSING actor \($0)") }
+        missing.s.sorted().forEach { print("  MISSING sequence \($0)") }
+        missing.f.sorted().forEach { print("  MISSING flag \($0)") }
         if failed > 0 || rendered != levels || !compositor.missingTextures.isEmpty || !compositor.missingMasks.isEmpty
-            || !models.missingModels.isEmpty { exit(2) }
+            || !models.missingModels.isEmpty || !missing.a.isEmpty || !missing.s.isEmpty || !missing.f.isEmpty { exit(2) }
 
     case ("gamestart", 2...):
         var seed: UInt32?, difficulty: Int?, outPath: String?
