@@ -278,6 +278,67 @@ private func summary(_ l: H4ObjectDrawList) -> [String] { l.items.map { "\($0.ki
     #expect(r.missingActors == ["griffin"] && r.missingSequences == ["nope"] && r.missingFlags == ["Blue"])
 }
 
+// MARK: - Range guards on in-memory army data (7c advisory)
+
+@Test func outOfRangeArmyDataIsNotDrawnAndDoesNotTrap() throws {
+    func name(boat: Int = -1, _ slots: [Slot]) -> String? {
+        H4GameRender.actorName(boat: boat, slots: slots, level: { _ in 1 }, keyword: kw, heroExists: { _ in true })
+    }
+    // hero class outside 0...47 (and not -1): nothing is drawn; the valid edges are unchanged
+    #expect(name([.hero(heroClass: 48, gender: 1)]) == nil && name([.hero(heroClass: 127, gender: 1)]) == nil)
+    #expect(name([.hero(heroClass: -2, gender: 1)]) == nil && name([.hero(heroClass: -128, gender: 0)]) == nil)
+    #expect(name([.hero(heroClass: 47, gender: 1)]) == "hero.might_magic_male" && name([.hero(heroClass: 0, gender: 1)]) == "hero.life_might_male")
+    // a ship type outside 0...5 is not a boat: the slots decide
+    #expect(name(boat: 6, [.creature(3)]) == kw(3) && name(boat: -2, []) == nil && name(boat: 127, [.hero(heroClass: 8, gender: 1)]) == "hero.order_might_male")
+    // creature ids outside the table are empty slots (no trap through the creature table)
+    let r = try renderer(resources())
+    let out = H4GameIdentifiers.creatureKeywords.count
+    let l = try r.drawList(objects: [army(3, 4, owner: 6, slots: [stack(out), stack(300)]), army(2, 2, owner: 6, slots: [stack(300), stack(griffin)])],
+                           game: game(), level: 0, region: region)
+    #expect(l.armyCount == 1 && Set(l.items.map(\.model)) == ["adv_actor.griffin"] && l.items.allSatisfy { $0.x == 2 && $0.y == 2 })
+    let rm = H4GameObject(index: 0, x: 3, y: 4, level: 0, className: "random_monster", subclass: "", owner: 6,
+                          resolved: H4ResolvedObject(model: "adv_actor.griffin", creature: out))
+    let l2 = try r.drawList(objects: [object("random_monster", 3, 4)], game: game([rm]), level: 0, region: region)
+    #expect(l2.armyCount == 0 && l2.items.isEmpty)
+}
+
+// MARK: - Session state (slice 7d-L)
+
+@Test func sessionStateMovesArmiesRemovesObjectsAndAddsArrows() throws {
+    var res = resources()
+    for n in ["internal.green_arrow.straight.se", "internal.red_arrow.dest"] { res["adv_object.\(n).h4d"] = objectBytes(layers: [solid("frame 001", 0, 0, 4, 4)], depths: [-1]) }
+    let r = try renderer(res)
+    let rec = H4GameObject(index: 1, x: 5, y: 6, level: 0, className: "random_artifact", subclass: "", owner: 2,
+                           resolved: H4ResolvedObject(model: "Flagged"))
+    let objs = [army(3, 4, owner: 1, slots: [stack(griffin)]), object("random_artifact", 5, 6), object("decorative", 1, 1, model: "Plain"),
+                army(6, 6, owner: 6, slots: [stack(griffin)])]
+    let g = game([rec])
+    let base = try r.drawList(objects: objs, game: g, level: 0, region: region)
+    // unmodified state == no state
+    var state = H4SessionRenderState()
+    state.armyCells = [0: H4MoveCell(3, 4), 3: H4MoveCell(6, 6)]
+    let same = try r.drawList(objects: objs, game: g, level: 0, region: region, state: state)
+    #expect(summary(same) == summary(base) && same.objectCount == base.objectCount && same.armyCount == base.armyCount)
+    // army 0 moved, object 1 removed, two arrows (one on another level: ignored by this level)
+    state.armyCells[0] = H4MoveCell(2, 3)
+    state.removed = [1]
+    state.arrowLevel = 0
+    state.arrows = [(H4MoveCell(4, 4), "internal.green_arrow.straight.se"), (H4MoveCell(4, 5), "internal.red_arrow.dest")]
+    let l = try r.drawList(objects: objs, game: g, level: 0, region: region, state: state)
+    let moved = summary(l).filter { $0.contains("3,4") }
+    #expect(moved.isEmpty)                                                            // nothing left at the old cell
+    #expect(summary(l).filter { $0.contains("2,3") }.count == summary(base).filter { $0.contains("3,4") && !$0.contains("Flagged") }.count)
+    #expect(!summary(l).contains { $0.contains("Flagged") || $0.contains(" 5,6 ") } && l.objectCount == 1 && l.armyCount == 2)   // arrows count in neither
+    #expect(l.items.filter { $0.model.hasPrefix("internal.") }.map(\.model) == ["internal.green_arrow.straight.se", "internal.red_arrow.dest"])
+    // other items keep their order
+    let rest = summary(l).filter { !$0.contains("internal.") && !$0.contains("2,3") }
+    #expect(rest == summary(base).filter { !$0.contains("3,4") && !$0.contains("Flagged") && !$0.contains(" 5,6 ") })
+    // arrows of another level are not drawn
+    state.arrowLevel = 1
+    let none = try r.drawList(objects: objs, game: g, level: 0, region: region, state: state)
+    #expect(!none.items.contains { $0.model.hasPrefix("internal.") })
+}
+
 // MARK: - Real data (reference crops)
 
 private let env = ProcessInfo.processInfo.environment

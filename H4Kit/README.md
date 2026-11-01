@@ -219,3 +219,7 @@ campaigns, scenario versions other than 27/29.
   their real model, armies and heroes (animated `adv_actor` sprite, frame 1, facing south-east),
   boats, owner flags (`animation.Flags.<colour>`, gray for neutral) on owned buildings and on heroes; the
   editor's markers (bomb, events, obelisk markers) are hidden. Identical to the Python reference on 10 areas.
+- **Playing a turn** (`H4GameSession`, `h4tool play`): hot-seat human players, calendar (day/week/month),
+  army selection, path planned with arrows (green today, red after), move limited to today's points,
+  pickups (resources, artifacts, chests, campfires — amounts inferred, documented), end of turn. Identical to
+  the Python reference on 10 scenarios (more than 600 commands).

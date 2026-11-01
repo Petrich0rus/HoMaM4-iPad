@@ -49,10 +49,11 @@ public final class H4GameRender: @unchecked Sendable {
     /// `heroExists(name)` tells whether `adv_actor.<name>` exists (used for the might fallback of a hero).
     static func actorName(boat: Int, slots: [ActorSlot], level: (Int) -> Int, keyword: (Int) -> String,
                           heroExists: (String) -> Bool) -> String? {
-        if (0...5).contains(boat) { return "ships." + factions[boat] }
+        if (0...5).contains(boat) { return "ships." + factions[boat] }     // any other ship type: not a boat
         for s in slots {
             guard case let .hero(c, gender) = s else { continue }
             if c == -1 { return "hero.chaos_magic_female" }
+            guard (0..<factions.count * 8).contains(c) else { return nil }  // in-memory data: class outside 0..47 is not drawn
             let f = factions[c / 8], sex = gender == 1 ? "male" : "female"
             var kind = magicClasses.contains(c) ? "magic" : "might"
             if !heroExists("hero.\(f)_\(kind)_\(sex)") { kind = "might" }
@@ -178,6 +179,8 @@ public final class H4GameRender: @unchecked Sendable {
 
     private struct Placed {
         var isArmy: Bool
+        /// Path arrow of a session plan: strips keyed like an army, counted in neither objects nor armies.
+        var isArrow = false
         var x: Int, y: Int
         var name: String
         var model: H4ObjectModel
@@ -189,8 +192,13 @@ public final class H4GameRender: @unchecked Sendable {
     private struct Strip { var key: SortKey; var order: Int; var item: H4ObjectDrawItem }
 
     /// The draw list (G1–G9) of `level` in `region` for the objects (file order) of a started game.
+    ///
+    /// `state` (slice 7d-L) is the state of a play session: armies are drawn at their current cells (same position in the
+    /// list), picked-up objects are absent, and the arrows of the active plan are appended after the other items.
+    /// Without `state`, or with an unmodified session, the list is the 7c list.
     public func drawList(objects: [H4ScenarioObject], game: H4Game, level: Int,
-                         region: H4MapTerrainRender.Region) throws -> H4ObjectDrawList {
+                         region: H4MapTerrainRender.Region, state: H4SessionRenderState? = nil) throws -> H4ObjectDrawList {
+        let creatureCount = tables.creatures.count
         let resolved = Dictionary(game.objects.map { ($0.index, $0) }, uniquingKeysWith: { a, _ in a })
         let W = region.canvasWidth, H = region.canvasHeight
         var placed: [Placed] = []
@@ -202,7 +210,7 @@ public final class H4GameRender: @unchecked Sendable {
             placed.append(Placed(isArmy: false, x: x, y: y, name: name, model: m, ax: ax, ay: ay, flagPoint: m.flagPoint,
                                  colour: m.flagPoint == nil ? nil : Self.flagColour(owner: owner)))
         }
-        func addArmy(_ o: H4ScenarioObject, actorName: String, owner: Int, ax: Int, ay: Int) throws {
+        func addArmy(x ox: Int, y oy: Int, actorName: String, owner: Int, ax: Int, ay: Int) throws {
             guard let adv = try actor(actorName) else { return }
             guard let wait = adv.actions.first(where: { $0.name == "wait" }) else {
                 lock.lock(); missingSequencesStore.insert("adv_actor.\(actorName) wait"); lock.unlock()
@@ -225,31 +233,33 @@ public final class H4GameRender: @unchecked Sendable {
             }
             guard let x0 = xs.min(), let x1 = xe.max(), let y0 = ys.min(), let y1 = ye.max(),
                   !(x0 >= W || x1 <= 0 || y0 >= H || y1 <= 0) else { return }
-            placed.append(Placed(isArmy: true, x: Int(o.x), y: Int(o.y), name: "adv_actor." + actorName, model: m, ax: ax, ay: ay,
+            placed.append(Placed(isArmy: true, x: ox, y: oy, name: "adv_actor." + actorName, model: m, ax: ax, ay: ay,
                                  flagPoint: colour == nil ? nil : (adv.tail.x0, adv.tail.y0), colour: colour))
         }
 
         for (i, o) in objects.enumerated() where Int(o.level) == level {
             let cl = o.className
-            if Self.hiddenClasses.contains(cl) { continue }
-            let a = H4MapObjectRender.anchor(x: Int(o.x), y: Int(o.y), region: region)
+            if Self.hiddenClasses.contains(cl) || state?.removed.contains(i) == true { continue }
+            let at = state?.armyCells[i]
+            let (ox, oy) = at.map { ($0.r, $0.c) } ?? (Int(o.x), Int(o.y))
+            let a = H4MapObjectRender.anchor(x: ox, y: oy, region: region)
             if cl == "army" {
                 guard case .army(let rec) = o.payload else { continue }
                 let slots: [ActorSlot] = (rec.army?.slots ?? []).map {
                     switch $0 {
                     case .empty: return .empty
-                    case .stack(let s): return s.creature == -1 ? .empty : .creature(Int(s.creature))
+                    case .stack(let s): return (0..<creatureCount).contains(Int(s.creature)) ? .creature(Int(s.creature)) : .empty
                     case .hero(let h): return .hero(heroClass: Int(h.heroClass), gender: Int(h.gender))
                     }
                 }
                 guard let name = Self.actorName(boat: rec.ai.map(Int.init) ?? -1, slots: slots,
                                                 level: { tables.creatures[$0].level }, keyword: { tables.creatures[$0].keyword },
                                                 heroExists: heroExists) else { continue }
-                try addArmy(o, actorName: name, owner: Int(rec.owner), ax: a.x, ay: a.y)
+                try addArmy(x: ox, y: oy, actorName: name, owner: Int(rec.owner), ax: a.x, ay: a.y)
             } else if cl == "random_monster" || cl == "random_random_monster" {
                 guard let rr = resolved[i], let model = rr.resolved.model, !model.isEmpty, rr.resolved.removed != true,
-                      let c = rr.resolved.creature else { continue }
-                try addArmy(o, actorName: tables.creatures[c].keyword, owner: 6, ax: a.x, ay: a.y)
+                      let c = rr.resolved.creature, (0..<creatureCount).contains(c) else { continue }
+                try addArmy(x: ox, y: oy, actorName: tables.creatures[c].keyword, owner: 6, ax: a.x, ay: a.y)
             } else if cl.hasPrefix("random_") || cl == "windmill" {
                 guard let rr = resolved[i], let model = rr.resolved.model, !model.isEmpty else { continue }
                 try addObject(o, name: model, owner: rr.owner, ax: a.x, ay: a.y)
@@ -258,8 +268,19 @@ public final class H4GameRender: @unchecked Sendable {
             }
         }
 
+        if let state, state.arrowLevel == level {
+            for (cell, name) in state.arrows {
+                guard let m = try models.model(named: name),
+                      H4MapObjectRender.isIncluded(x: cell.r, y: cell.c, width: 1, height: 1, region: region) else { continue }
+                let a = H4MapObjectRender.anchor(x: cell.r, y: cell.c, region: region)
+                var p = Placed(isArmy: false, x: cell.r, y: cell.c, name: name, model: m, ax: a.x, ay: a.y, flagPoint: nil, colour: nil)
+                p.isArrow = true
+                placed.append(p)
+            }
+        }
+
         var list = H4ObjectDrawList()
-        list.objectCount = placed.filter { !$0.isArmy }.count
+        list.objectCount = placed.filter { !$0.isArmy && !$0.isArrow }.count
         list.armyCount = placed.filter(\.isArmy).count
 
         func item(_ kind: H4ObjectDrawItem.Kind, _ p: Placed, _ k: Int, column: Int?, clip: Range<Int>?) -> H4ObjectDrawItem {
@@ -281,7 +302,7 @@ public final class H4GameRender: @unchecked Sendable {
         func add(_ key: SortKey, _ it: H4ObjectDrawItem) { strips.append(Strip(key: key, order: strips.count, item: it)) }
         for p in placed {                                             // pass B
             let m = p.model, s = p.x + p.y
-            if p.isArmy {
+            if p.isArmy || p.isArrow {
                 for k in m.bodyLayers {
                     let l = m.layers[k]
                     for col in H4MapObjectRender.floorDiv(l.left + m.originX, 32)..<H4MapObjectRender.ceilDiv(l.right + m.originX, 32) {

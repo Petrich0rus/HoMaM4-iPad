@@ -33,6 +33,11 @@ usage:
                                                difficulty 2); canonical JSON, stdout without --out
   h4tool towns <Data-dir> <maps-dir> [--out t.json] [--seed N --difficulty D]
                                                per town: first free outside entrance cell and reachability of the town cell
+  h4tool play    <Data-dir> <maps-dir> <map-name> --script s.json [--out log.json]
+                                               play a script (select/plan/move/endturn/state, slice 7d-L) on the started game
+                                               (seed 12345, difficulty 2) and write the canonical log (stdout without --out)
+  h4tool play    <Data-dir> --arrows arrows.json  check the path arrow names (and that each exists in the resource store);
+                                               prints `arrows: K/N ok, missing M`, exit 0 only if all ok
   h4tool render-all <Data-dir> <maps-dir> <out-dir> [--scale k] [--no-objects] [--game --seed N --difficulty D]
                                                render every level of every scenario (.h4c, recursive) to
                                                <out-dir>/<map path>.L<level>.png (exit 2 on any failure or missing resource)
@@ -501,6 +506,53 @@ do {
             text = try session.townsJSON()
         }
         if let outPath { try Data(text.utf8).write(to: URL(fileURLWithPath: outPath)) } else { FileHandle.standardOutput.write(Data(text.utf8)) }
+
+    case ("play", 2...):
+        var scriptPath: String?, outPath: String?, arrowsPath: String?
+        var positional: [String] = []
+        var g = 0
+        while g < rest.count {
+            switch rest[g] {
+            case "--script", "--out", "--arrows":
+                guard g + 1 < rest.count else { fail(usage) }
+                if rest[g] == "--script" { scriptPath = rest[g + 1] } else if rest[g] == "--out" { outPath = rest[g + 1] } else { arrowsPath = rest[g + 1] }
+                g += 2
+            default: positional.append(rest[g]); g += 1
+            }
+        }
+        if let arrowsPath {
+            guard positional.count == 1 else { fail(usage) }
+            let store = try H4ResourceStore(dataDirectory: URL(fileURLWithPath: positional[0]))
+            guard let cases = try JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: arrowsPath))) as? [[String: Any]] else {
+                fail("arrows file is not a JSON list of cases")
+            }
+            var ok = 0, missing = 0
+            for c in cases {
+                let id = c["id"].map { "\($0)" } ?? "?"
+                guard let raw = c["path"] as? [[Int]], raw.allSatisfy({ $0.count == 2 }), let dayOf = c["day_of"] as? [Int],
+                      let expected = c["expected"] as? [String] else {
+                    fail("arrows case \(id): path must be [[r,c],...], day_of [int], expected [string]")
+                }
+                let got = H4PathArrows.names(path: raw.map { H4MoveCell($0[0], $0[1]) }, dayOf: dayOf)
+                if got == expected { ok += 1 } else { print("FAIL \(id) got \(got.map { "\($0)" } ?? "nil") expected \(expected)") }
+                // every name actually produced must exist in the store (not only the expected ones)
+                for name in Set(expected).union(got ?? []) where store.locate("adv_object.\(name).h4d") == nil { missing += 1; print("MISSING RESOURCE \(id) \(name)") }
+            }
+            print("arrows: \(ok)/\(cases.count) ok, missing \(missing)")
+            if ok != cases.count || missing != 0 { exit(1) }
+        } else {
+            guard positional.count == 3, let scriptPath else { fail(usage) }
+            let host = try H4MovementSession(dataDirectory: URL(fileURLWithPath: positional[0]), mapsDirectory: URL(fileURLWithPath: positional[1]),
+                                             seed: 12345, difficulty: 2)
+            guard let files = host.mapFiles[positional[2]], files.count == 1 else {
+                fail("map name '\(positional[2])' matches \(host.mapFiles[positional[2]]?.count ?? 0) files")
+            }
+            let scenario = try H4Scenario(fileData: Data(contentsOf: URL(fileURLWithPath: files[0])))
+            let game = try H4GameStart.start(scenario: scenario, store: host.store, tables: host.tables, seed: host.seed, difficulty: host.difficulty)
+            let session = try H4GameSession(game: game, scenario: scenario, resources: host.store, tables: host.tables)
+            let text = try session.runScript(Data(contentsOf: URL(fileURLWithPath: scriptPath)))
+            if let outPath { try Data(text.utf8).write(to: URL(fileURLWithPath: outPath)) } else { FileHandle.standardOutput.write(Data(text.utf8)) }
+        }
 
     default:
         fail(usage)
