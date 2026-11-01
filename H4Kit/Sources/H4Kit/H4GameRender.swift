@@ -194,7 +194,8 @@ public final class H4GameRender: @unchecked Sendable {
     /// The draw list (G1–G9) of `level` in `region` for the objects (file order) of a started game.
     ///
     /// `state` (slice 7d-L) is the state of a play session: armies are drawn at their current cells (same position in the
-    /// list), picked-up objects are absent, and the arrows of the active plan are appended after the other items.
+    /// list), picked-up objects are absent, and the arrows of the active plan are appended after the other items; a session
+    /// item whose model is a ground object (O4: the selection ring) is sorted with the ground objects, under the armies.
     /// Without `state`, or with an unmodified session, the list is the 7c list.
     public func drawList(objects: [H4ScenarioObject], game: H4Game, level: Int,
                          region: H4MapTerrainRender.Region, state: H4SessionRenderState? = nil) throws -> H4ObjectDrawList {
@@ -302,7 +303,8 @@ public final class H4GameRender: @unchecked Sendable {
         func add(_ key: SortKey, _ it: H4ObjectDrawItem) { strips.append(Strip(key: key, order: strips.count, item: it)) }
         for p in placed {                                             // pass B
             let m = p.model, s = p.x + p.y
-            if p.isArmy || p.isArrow {
+            let ground = m.imageKind == 1 || m.drawLayer == 2
+            if p.isArmy || (p.isArrow && !ground) {
                 for k in m.bodyLayers {
                     let l = m.layers[k]
                     for col in H4MapObjectRender.floorDiv(l.left + m.originX, 32)..<H4MapObjectRender.ceilDiv(l.right + m.originX, 32) {
@@ -314,8 +316,10 @@ public final class H4GameRender: @unchecked Sendable {
                 continue
             }
             if m.bodyLayers.isEmpty { continue }
-            if m.imageKind == 1 || m.drawLayer == 2 {
-                for k in m.bodyLayers { add(SortKey(-1, Double(s), Double(p.x)), item(.body, p, k, column: nil, clip: nil)) }
+            if ground {
+                // a session overlay item on the ground (the selection ring) comes after the ground objects of its cell
+                let key = p.isArrow ? SortKey(-1, Double(s), Double(p.x), 1) : SortKey(-1, Double(s), Double(p.x))
+                for k in m.bodyLayers { add(key, item(.body, p, k, column: nil, clip: nil)) }
                 if let f = try flagItem(p) { add(SortKey(-1, Double(s), Double(p.x), 1), f) }
                 continue
             }

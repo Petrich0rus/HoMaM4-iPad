@@ -480,3 +480,25 @@ func nearestPickupAgreesWithPlanOnRealMaps(entry: (String, String)) throws {
 private extension Result where Success == Void {
     var isOK: Bool { if case .success = self { return true }; return false }
 }
+
+/// The selection ring is a ground model (O4): it is drawn before the body strips of the army on its cell; the path arrows
+/// (not ground models) stay after everything.
+@Test(.enabled(if: hasOracle))
+func selectionRingIsDrawnUnderTheArmy() throws {
+    let st = try Started(map: "Ancestral_Home")
+    let s = try st.session()
+    let models = H4ObjectModelLibrary(store: st.store)
+    let render = H4GameRender(store: st.store, tables: st.tables, models: models)
+    let region = H4MapTerrainRender.Region(row: 36, column: 40, rows: 40, columns: 40)
+    let ring = try #require(try models.model(named: "internal.selected.army"))
+    #expect(ring.imageKind == 1 || ring.drawLayer == 2)
+    let c = try #require(s.army(297)?.cell)
+    var state = s.renderState
+    state.arrowLevel = 0
+    state.arrows = [(cell: c, model: "internal.selected.army")]
+    let l = try render.drawList(objects: s.scenarioObjects, game: st.game, level: 0, region: region, state: state)
+    let at = l.items.enumerated().filter { $0.element.x == c.r && $0.element.y == c.c }
+    let ringIdx = try #require(at.first { $0.element.model == "internal.selected.army" && $0.element.kind == .body }?.offset)
+    let armyBodies = at.filter { $0.element.model.hasPrefix("adv_actor.") && $0.element.kind == .body }.map(\.offset)
+    #expect(!armyBodies.isEmpty && armyBodies.allSatisfy { ringIdx < $0 })
+}

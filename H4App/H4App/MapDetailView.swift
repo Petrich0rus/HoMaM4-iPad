@@ -7,6 +7,12 @@ struct MapDetailView: View {
     @State private var minimapError: String?
     @State private var loading = true
     @State private var showMap = false
+    @State private var showGame = false
+    @State private var difficulty = 1
+    #if DEBUG
+    /// Seed of the new game; the scripted runs use 12345 with difficulty 2 (Hard).
+    @State private var seedText = "12345"
+    #endif
 
     var body: some View {
         ScrollView {
@@ -19,8 +25,22 @@ struct MapDetailView: View {
                     text("Description", info.description)
                     text("Victory", info.victoryText)
                     text("Defeat", info.defeatText)
-                    Button("Open map", systemImage: "play.fill") { showMap = true }
-                        .buttonStyle(.borderedProminent).controlSize(.large)
+                    HStack(spacing: 16) {
+                        Button("Open map", systemImage: "map.fill") { showMap = true }
+                            .buttonStyle(.bordered).controlSize(.large)
+                        Button("New game", systemImage: "play.fill") { showGame = true }
+                            .buttonStyle(.borderedProminent).controlSize(.large)
+                    }
+                    Picker("Difficulty", selection: $difficulty) {
+                        ForEach(0..<5, id: \.self) { Text(MapEntry.difficultyName($0)).tag($0) }
+                    }
+                    .pickerStyle(.segmented).frame(maxWidth: 480)
+                    #if DEBUG
+                    HStack {
+                        Text("Seed").foregroundStyle(.secondary)
+                        TextField("Seed", text: $seedText).keyboardType(.numberPad).textFieldStyle(.roundedBorder).frame(maxWidth: 160)
+                    }
+                    #endif
                 } else {
                     Label("Unsupported map", systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
                     Text(entry.error ?? "").textSelection(.enabled)
@@ -33,7 +53,24 @@ struct MapDetailView: View {
         .fullScreenCover(isPresented: $showMap) {
             if let store = library.store { MapScreen(entry: entry, store: store) }
         }
+        .fullScreenCover(isPresented: $showGame) {
+            if let store = library.store { GameScreen(entry: entry, store: store, difficulty: difficulty, seed: gameSeed) }
+        }
         .task { await loadMinimaps() }
+        #if DEBUG
+        .onAppear {
+            // Developer aid: `-H4NewGame` starts the game of the preselected map at once (difficulty 2, seed field as is).
+            if UserDefaults.standard.bool(forKey: "H4NewGame") { difficulty = 2; showGame = true }
+        }
+        #endif
+    }
+
+    private var gameSeed: UInt32 {
+        #if DEBUG
+        return UInt32(seedText) ?? 12345
+        #else
+        return UInt32.random(in: 1...UInt32.max)
+        #endif
     }
 
     private func facts(_ info: MapEntry.Info) -> some View {

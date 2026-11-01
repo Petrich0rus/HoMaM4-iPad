@@ -7,6 +7,7 @@ struct MapBrowserView: View {
     @State private var search = ""
     #if DEBUG
     @State private var touring = false
+    @State private var playing = false
     #endif
 
     private var filtered: [MapEntry] {
@@ -34,8 +35,9 @@ struct MapBrowserView: View {
         }
         .onAppear(perform: selectFromLaunchArgument)
         #if DEBUG
-        .onAppear { if AutoTour.isRequested { touring = true } }
+        .onAppear { if AutoTour.isRequested { touring = true } else if AutoPlay.isRequested { playing = true } }
         .fullScreenCover(isPresented: $touring) { AutoTourView() }
+        .fullScreenCover(isPresented: $playing) { AutoPlayView() }
         #endif
     }
 }

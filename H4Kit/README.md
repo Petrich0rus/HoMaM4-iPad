@@ -223,3 +223,14 @@ campaigns, scenario versions other than 27/29.
   army selection, path planned with arrows (green today, red after), move limited to today's points,
   pickups (resources, artifacts, chests, campfires — amounts inferred, documented), end of turn. Identical to
   the Python reference on 10 scenarios (more than 600 commands).
+
+## Playing on iPad (step 2, H4App)
+
+"New game" on a map's page (difficulty, seed): game screen with a SwiftUI bar (day/week/month, colour of the
+player, 7 resources, card for the selected army, End turn). Tap your army = select (ring on the ground),
+tap a cell = path with arrows, tap again = the hero walks (animation, camera follows), pickups, end of turn.
+Only the tiles that change are redrawn. DEBUG: `-H4AutoPlay` plays one pickup on every map (97 ok, 8 skips
+with a reason, 0 failures), `-H4GameScript` replays commands.
+Known limits (follow-ups): no combat/AI/towns/fog yet, interface not yet the original artwork, starting resources
+and some amounts provisional, ~1 s per move on very large maps (draw list rebuilt on the main thread),
+pixel boxes read through `Mirror` (to replace with a public API), overlay to stop if the screen is closed mid-walk.
