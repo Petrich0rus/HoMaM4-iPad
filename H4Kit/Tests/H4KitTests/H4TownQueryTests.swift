@@ -211,7 +211,7 @@ func tierChangingBuildOverridesExactlyThatTown() throws {
     let region = H4MapTerrainRender.Region.whole(size: w.scenario.size)
     func list() throws -> H4ObjectDrawList { try render.drawList(objects: s.scenarioObjects, game: w.game, level: 0, region: region, state: s.renderState) }
     #expect(s.renderState.modelOverride.isEmpty)
-    let base = try list()
+    _ = try list()                                                                              // a fresh v2 session renders
     let cmds = try script("life")
     for c in cmds[0...14] { _ = try s.execute(command: c) }                                    // up to the refused builds
     let before = try list()
