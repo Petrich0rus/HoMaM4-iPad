@@ -283,9 +283,10 @@ let hits = try renderer.hitTest(faction: 0, background: "snow", built: [0, 3, 8,
 - Status: builds, `swift test` green (200 tests without game data), checked by hand in the simulator. The frozen-reference runs
   (C2-C4) and `-H4AutoTown` over the 105 maps are deferred to the bulk test.
 
-Known issue for the bulk test (terrain, step 1): some cells of a few maps (e.g. "A Land without a King", map edges) use a terrain
-whose texture in the game data is a developer placeholder reading "DELETE ME NOW!!!"; the minimap shows them magenta. The rule
-the game uses to replace or hide them is not yet found in the executable.
+Known issues for the bulk test: (1) the red "DELETE ME NOW!!!" cubes are the map editor's deletion markers (class
+`deletion_marker`, Editor.Bomb, 273 in 15 maps); the game renderer hides them but the static map viewer ("Open map") still draws
+them, and the objects they presumably delete at game start are not modelled yet. (2) The minimap paints magenta the terrain
+cells whose colour is missing from its table (seen on "A Land without a King").
 
 ## Playing on iPad (step 2, H4App)
 
