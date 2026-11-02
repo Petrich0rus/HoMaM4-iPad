@@ -74,6 +74,7 @@ private struct GameContent: View {
     let close: () -> Void
     @Environment(\.displayScale) private var displayScale
     @State private var info: MapCellInfo?
+    @State private var showTowns = false
 
     private static let playerColours: [Color] = [.red, .blue, .green, .orange, .purple, .teal]
 
@@ -89,6 +90,7 @@ private struct GameContent: View {
                 bottomBar
             }
             if let info { infoCard(info) }
+            TownHost(model: model, town: model.town)
             if let text = model.message {
                 VStack {
                     Spacer()
@@ -102,8 +104,18 @@ private struct GameContent: View {
             }
         }
         .animation(.default, value: model.message)
+        .sheet(isPresented: $showTowns) {
+            TownListSheet(model: model) { index in
+                showTowns = false
+                model.town.open(index)
+            }
+            .presentationDetents([.medium, .large])
+        }
         #if DEBUG
-        .task { await Self.runLaunchScript(model) }
+        .task {
+            await Self.runLaunchScript(model)
+            await ScriptFileRunner.runIfRequested(model)
+        }
         #endif
     }
 
@@ -137,6 +149,8 @@ private struct GameContent: View {
     private var topBar: some View {
         HStack(spacing: 12) {
             Button("Close", systemImage: "xmark.circle.fill") { close() }.buttonStyle(.borderedProminent)
+            Button("Towns", systemImage: "building.columns.fill") { showTowns = true }
+                .buttonStyle(.bordered).disabled(model.isWalking)
             Text(model.title).font(.headline).foregroundStyle(.white).lineLimit(1)
             #if DEBUG
             Text("seed \(model.seed) · difficulty \(model.difficulty)").font(.caption).foregroundStyle(.white.opacity(0.6))
@@ -161,19 +175,7 @@ private struct GameContent: View {
         .background(.black.opacity(0.45))
     }
 
-    private var resourceBar: some View {
-        HStack(spacing: 14) {
-            ForEach(Array(H4SessionResources.names.enumerated()), id: \.offset) { i, name in
-                VStack(spacing: 0) {
-                    Text(name.capitalized).font(.caption2).foregroundStyle(.white.opacity(0.65))
-                    Text("\(model.resources[i])").font(.callout.monospacedDigit().bold()).foregroundStyle(.white)
-                }
-            }
-            Spacer()
-        }
-        .padding(.horizontal).padding(.vertical, 4)
-        .background(.black.opacity(0.35))
-    }
+    private var resourceBar: some View { ResourceBar(amounts: model.resources) }
 
     private var bottomBar: some View {
         HStack(alignment: .bottom) {

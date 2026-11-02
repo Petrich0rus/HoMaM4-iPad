@@ -84,7 +84,7 @@ final class MapSession: @unchecked Sendable {
             progress(0.30, "Starting the game…")
             let tables = try H4GameTables(store: store)
             let game = try H4GameStart.start(scenario: scenario, store: store, tables: tables, seed: start.seed, difficulty: start.difficulty)
-            let gameSession = try H4GameSession(game: game, scenario: scenario, resources: store, tables: tables)
+            let gameSession = try H4GameSession(game: game, scenario: scenario, resources: store, tables: tables, ruleset: .v2)
             parts = GameParts(game: game, session: gameSession, render: H4GameRender(store: store, tables: tables, models: models))
         }
         var levels: [Level] = []

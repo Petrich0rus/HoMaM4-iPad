@@ -39,12 +39,15 @@ final class GameModel: ObservableObject {
     let hooks = MapGameHooks()
     let title: String
     let overlay: WalkOverlay
+    let town: TownModel
     let mapSize: Int
 
     /// Current draw list per level (the one the tiles use).
     private var lists: [H4ObjectDrawList]
     private let region: H4MapTerrainRender.Region
     private var messageTask: Task<Void, Never>?
+    /// Model overrides already drawn on the map (towns whose tier changed).
+    private var overrides: [Int: String] = [:]
     private let logger = Logger(subsystem: "fr.petrichorus.H4App", category: "game")
     #if DEBUG
     /// Folder of the before/after draw-list dumps; nil = no dumps.
@@ -68,7 +71,9 @@ final class GameModel: ObservableObject {
         region = .whole(size: mapSize)
         lists = loaded.map.levels.map(\.objects)
         overlay = WalkOverlay(store: store, mapSize: mapSize)
+        town = TownModel(store: store)
         hooks.onTap = { [weak self] level, row, column in self?.handleTap(level: level, row: row, column: column) }
+        town.game = self
         syncPublished()
         #if DEBUG
         try? FileManager.default.removeItem(at: URL.documentsDirectory.appending(path: "debug", directoryHint: .isDirectory))
@@ -335,59 +340,112 @@ final class GameModel: ObservableObject {
         log(line)
     }
 
+    // MARK: single mutation path (q4)
+
+    /// The only place H4App changes the game state: `H4GameSession.execute(command:)`. Everything that changes the game
+    /// (select, plan, move, endturn, build, recruit, transfer) builds a raw command dictionary (or takes it from a script)
+    /// and ends here; the UI then refreshes from the returned record.
+    func execute(_ command: [String: Any]) throws -> H4LogRecord {
+        try session.execute(command: command)
+    }
+
+    /// Runs one command with the UI effects of its op (walk animation, draw lists, HUD, town screen). The script runner and
+    /// the typed methods below both go through it.
+    @discardableResult
+    func run(_ command: [String: Any], animated: Bool = true) throws -> H4LogRecord {
+        switch command["op"] as? String {
+        case "select": return try runSelect(command)
+        case "plan": return try runPlan(command)
+        case "move": return try runMove(command, animated: animated)
+        case "endturn": return try runEndTurn(command)
+        case "build", "recruit", "transfer": return try town.perform(command)
+        default:
+            let record = try execute(command)
+            syncPublished()
+            return record
+        }
+    }
+
+    private static func why(_ record: H4LogRecord) -> H4SessionWhy? { record.why.flatMap { H4SessionWhy(rawValue: $0) } }
+
+    private func runSelect(_ command: [String: Any]) throws -> H4LogRecord {
+        let previous = session.selectedArmy
+        let record = try execute(command)
+        syncPublished()
+        if record.ok {
+            logState("select", "ok=true")
+            refresh(op: "select", levels: levelsTouched([previous, session.selectedArmy]))
+        } else {
+            logState("select", "ok=false why=\(record.why ?? "-") target=\(command["army"] ?? "-")")
+            if let why = Self.why(record) { show(Self.explain(why)) }
+        }
+        syncPublished()
+        return record
+    }
+
     @discardableResult
     func select(army id: Int) -> Result<Void, H4SessionWhy> {
         guard !isWalking else { return .failure(.noPoints) }
-        let previous = session.selectedArmy
-        let result = session.select(army: id)
-        syncPublishedAfterOp()
-        switch result {
-        case .success:
-            logState("select", "ok=true")
-            refresh(op: "select", levels: levelsTouched([previous, id]))
-        case .failure(let why):
-            logState("select", "ok=false why=\(why.rawValue) target=\(id)")
-            show(Self.explain(why))
-        }
-        syncPublished()
-        return result
+        guard let record = try? run(["op": "select", "army": id]) else { return .failure(.notOwn) }
+        return record.ok ? .success(()) : .failure(Self.why(record) ?? .notOwn)
     }
 
-    private func syncPublishedAfterOp() { syncPublished() }
+    private func runPlan(_ command: [String: Any]) throws -> H4LogRecord {
+        let sel = session.selectedArmy
+        let record = try execute(command)
+        syncPublished()
+        let to = (command["to"] as? [Int]).map { "\($0[0]),\($0[1])" } ?? "-"
+        if record.ok {
+            logState("plan", "ok=true to=\(to) cost=\(record.int("cost") ?? -1) days=\(record.int("days") ?? -1) steps=\((record.count("path") ?? 1) - 1)")
+        } else {
+            logState("plan", "ok=false why=\(record.why ?? "-") to=\(to)")
+            if let why = Self.why(record) { show(Self.explain(why)) }
+        }
+        refresh(op: "plan", levels: levelsTouched([sel]))
+        return record
+    }
 
     @discardableResult
     func plan(to cell: H4MoveCell) -> H4PlannedPath {
-        let sel = session.selectedArmy
-        let p = session.plan(to: cell)
-        syncPublished()
-        if p.ok {
-            logState("plan", "ok=true to=\(cell.r),\(cell.c) cost=\(p.cost) days=\(p.days) steps=\(p.path.count - 1)")
-        } else {
-            logState("plan", "ok=false why=\(p.why?.rawValue ?? "-") to=\(cell.r),\(cell.c)")
-            if let why = p.why { show(Self.explain(why)) }
-        }
-        refresh(op: "plan", levels: levelsTouched([sel]))
-        return p
+        let failed = H4PlannedPath(ok: false, why: .noSelection, path: [], dayOf: [], cost: -1, days: -1, arrows: [])
+        guard let record = try? run(["op": "plan", "to": [cell.r, cell.c]]) else { return failed }
+        if record.ok, let p = session.currentPlan { return p }
+        return H4PlannedPath(ok: false, why: Self.why(record), path: [], dayOf: [], cost: record.int("cost") ?? -1,
+                             days: record.int("days") ?? -1, arrows: [])
+    }
+
+    private static func outcome(_ record: H4LogRecord) -> H4MoveOutcome {
+        H4MoveOutcome(ok: record.ok, why: why(record), steps: record.int("steps") ?? 0, picked: record.int("picked"),
+                      spent: record.int("spent") ?? 0, visited: record.int("visited"))
     }
 
     @discardableResult
     func move(animated: Bool = true) -> H4MoveOutcome {
+        guard let record = try? run(["op": "move"], animated: animated) else {
+            return H4MoveOutcome(ok: false, why: .noSelection, steps: 0, picked: nil, spent: 0)
+        }
+        return Self.outcome(record)
+    }
+
+    private func runMove(_ command: [String: Any], animated: Bool) throws -> H4LogRecord {
         guard let id = session.selectedArmy, let start = session.army(id), let planned = session.currentPlan, !isWalking else {
-            let out = session.move()
+            let record = try execute(command)
+            let out = Self.outcome(record)
             logState("move", "ok=\(out.ok) why=\(out.why?.rawValue ?? "-")")
             if let why = out.why { show(Self.explain(why)) }
-            return out
+            return record
         }
         let level = start.level
         let before = lists[level]
         let resourcesBefore = resources, bagBefore = session.backpack(army: id).count
         let pointsBefore = start.pointsLeft
-        let out = session.move()
+        let record = try execute(command)
+        let out = Self.outcome(record)
         syncPublished()
         guard out.ok else {
             logState("move", "ok=false why=\(out.why?.rawValue ?? "-")")
             if let why = out.why { show(Self.explain(why)) }
-            return out
+            return record
         }
         logState("move", "ok=true steps=\(out.steps) spent=\(out.spent) picked=\(out.picked.map(String.init) ?? "-") from=\(start.cell.r),\(start.cell.c) pointsBefore=\(pointsBefore)")
         if out.picked != nil {
@@ -398,6 +456,7 @@ final class GameModel: ObservableObject {
         let end = session.army(id)!.cell
         let walked = Array(planned.path.prefix(through: planned.path.firstIndex(of: end) ?? 0))
         let final = buildList(level: level, state: drawState())
+        let visited = out.visited
 
         // Animated walk: the tiles show the world after the move but without the walking army (and its ring); the overlay
         // sprite walks; at the end the tiles get the army and ring at the destination. Both steps together redraw exactly
@@ -418,12 +477,14 @@ final class GameModel: ObservableObject {
                 self.overlay.hide(after: 0.15)
                 self.isWalking = false
                 self.syncPublished()
+                if let visited { self.town.open(visited) }
             }
-            if started { return out }
+            if started { return record }
             isWalking = false
         }
         install(final, level: level, invalidating: Self.reduce(rectsStart + rectsEnd))
-        return out
+        if let visited { town.open(visited) }
+        return record
     }
 
     private static func gained(from old: [Int], to new: [Int]) -> String {
@@ -433,13 +494,36 @@ final class GameModel: ObservableObject {
 
     func endTurn() {
         guard !isWalking else { return }
+        _ = try? run(["op": "endturn"])
+    }
+
+    private func runEndTurn(_ command: [String: Any]) throws -> H4LogRecord {
         let previous = session.selectedArmy
-        session.endTurn()
+        let record = try execute(command)
         syncPublished()
         logState("endturn", "ok=true")
         refresh(op: "endturn", levels: levelsTouched([previous]))
         show("\(playerName) — day \(day), week \(week), month \(month)")
+        return record
     }
+
+    // MARK: towns
+
+    /// Refreshes HUD and map model after a build / recruit / transfer: resources changed, and a tier change swaps the model of
+    /// that town on the map (the override is part of the session's render state).
+    func afterTownCommand(op: String, record: H4LogRecord, town index: Int?) {
+        syncPublished()
+        logState(op, "ok=\(record.ok) why=\(record.why ?? "-") town=\(index.map(String.init) ?? "-")")
+        let now = session.renderState.modelOverride
+        guard now != overrides else { return }
+        let changed = Set(now.keys).union(overrides.keys).filter { now[$0] != overrides[$0] }
+        overrides = now
+        let levels = Set(changed.compactMap { i in session.scenarioObjects.indices.contains(i) ? Int(session.scenarioObjects[i].level) : nil })
+        refresh(op: op, levels: levels.sorted())
+    }
+
+    /// Own towns of the current player, in object order.
+    var ownTowns: [H4TownState] { session.towns.filter { $0.owner == session.currentPlayer } }
 
     // MARK: touch
 

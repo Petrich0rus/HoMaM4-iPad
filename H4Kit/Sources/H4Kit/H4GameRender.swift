@@ -263,9 +263,9 @@ public final class H4GameRender: @unchecked Sendable {
                 try addArmy(x: ox, y: oy, actorName: tables.creatures[c].keyword, owner: 6, ax: a.x, ay: a.y)
             } else if cl.hasPrefix("random_") || cl == "windmill" {
                 guard let rr = resolved[i], let model = rr.resolved.model, !model.isEmpty else { continue }
-                try addObject(o, name: model, owner: rr.owner, ax: a.x, ay: a.y)
+                try addObject(o, name: state?.modelOverride[i] ?? model, owner: rr.owner, ax: a.x, ay: a.y)
             } else {
-                try addObject(o, name: o.modelName, owner: Self.owner(of: o), ax: a.x, ay: a.y)
+                try addObject(o, name: state?.modelOverride[i] ?? o.modelName, owner: Self.owner(of: o), ax: a.x, ay: a.y)
             }
         }
 
