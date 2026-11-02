@@ -273,6 +273,20 @@ let hits = try renderer.hitTest(faction: 0, background: "snow", built: [0, 3, 8,
   background of the 657 towns, the check of every town's layers (0 missing) and the thumbnail table. About 0.1 s per scene in release,
   including opening the archives and encoding the PNG. The scene scale of the window (client width * 0.00078125) is left to the app.
 
+## Town screen in the app (step 3, slice 8c)
+
+- H4Kit: read-only town queries of a v2 session (`H4TownQuery.swift`: build status, recruit / transfer previews that run the 8a
+  command on a copy, town terrain, building and creature display names from `table.buildings` / `table.creatures`), single command
+  entry `execute(command:)` returning an `H4LogRecord`, and the map model override when a town changes tier (`modelOverride`).
+- H4App: "Towns" button and automatic opening when a hero enters an own town; town screen (8b scene, build grid with costs and
+  refusal reasons, recruit, garrison / visitor transfers); the town model on the map follows its tier. DEBUG: `-H4AutoTown`.
+- Status: builds, `swift test` green (200 tests without game data), checked by hand in the simulator. The frozen-reference runs
+  (C2-C4) and `-H4AutoTown` over the 105 maps are deferred to the bulk test.
+
+Known issue for the bulk test (terrain, step 1): some cells of a few maps (e.g. "A Land without a King", map edges) use a terrain
+whose texture in the game data is a developer placeholder reading "DELETE ME NOW!!!"; the minimap shows them magenta. The rule
+the game uses to replace or hide them is not yet found in the executable.
+
 ## Playing on iPad (step 2, H4App)
 
 "New game" on a map's page (difficulty, seed): game screen with a SwiftUI bar (day/week/month, colour of the
