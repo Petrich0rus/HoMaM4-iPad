@@ -244,6 +244,35 @@ campaigns, scenario versions other than 27/29.
 - Inferred / pinned [I] as in the reference: default-built dwelling count and no `rand`, the other-might-grail growth bonus (+25), hero-skill
   term 0, generators pay on their first tick without the 50 % roll, `allowed` used as an extra filter, visiting rules, taxpayers after pass B.
 
+## Town screen rendering (step 3, slice 8b)
+
+```swift
+let renderer = H4TownRenderer(store: store)
+let (image, drawList) = try renderer.render(faction: 0, background: "snow", built: [0, 3, 8, 9, 12])   // 1280x825 RGBA, scale 1
+let hits = try renderer.hitTest(faction: 0, background: "snow", built: [0, 3, 8, 9, 12], points: [(x: 527, y: 785)])
+```
+
+```bash
+.build/release/h4tool town-scene        <Data> --fac life --terrain 5 --built 0,3,8,9 --out scene.png [--draw draw.json]   # or --bg <name>
+.build/release/h4tool town-hits         <Data> --fac life --terrain 5 --built 0,3,8,9 --points pts.json --out hits.json
+.build/release/h4tool town-terrain-all  <Data> <maps-dir> --out towns_terrain.json    # 657 towns
+.build/release/h4tool town-check-all    <Data> <maps-dir> --out missing.json
+.build/release/h4tool town-thumbs-all   <Data> --out thumbs.json
+```
+
+- `H4TownRender.terrain(...)`: terrain id of a town [D 0x894bc0]: the terrain of the entrance cell (first edge bit of the model's footprint,
+  `(X + i + 1, Y + j)`), else the nearest footprint cell with terrain 1...8 (last of equal minima). Background name from the table at 0x8ab0d0
+  (`H4TownRender.backgroundName`): 0 sand, 1...8 grass, rough, swamp, volcanic, snow, sand, dirt, subterranean, 9 sand, 10 volcanic, 11 snow,
+  12...18 grass (`layers.town.chaos.volcano` is never used).
+- Scene: background layer, shadows, buildings (animated ones = `base` + first frame of the playback order, else the layout layer), then the
+  foreground layers. Only the highest hall / keep / mage guild is drawn; ids that are no building of the faction are ignored. Buildings and
+  shadows are sorted by the bottom edge of their layout layer, then by id [I]. Compositing is `H4Layer.draw`.
+- Hit-test [I]: topmost displayed building with alpha > 0 under the point; shadows and foregrounds are not clickable. The answer carries the
+  whole stack, topmost first. Build-dialog thumbnails: the layer of `layers.town.<fac>.thumbnails` named like the building keyword.
+- Identical to the frozen reference `town_ref.py` on the 12 oracle scenes (pixels and draw lists), the 30 hit-test points, the terrain id and
+  background of the 657 towns, the check of every town's layers (0 missing) and the thumbnail table. About 0.1 s per scene in release,
+  including opening the archives and encoding the PNG. The scene scale of the window (client width * 0.00078125) is left to the app.
+
 ## Playing on iPad (step 2, H4App)
 
 "New game" on a map's page (difficulty, seed): game screen with a SwiftUI bar (day/week/month, colour of the

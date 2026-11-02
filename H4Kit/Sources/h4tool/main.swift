@@ -38,6 +38,12 @@ usage:
                                                log (stdout without --out). v2 (default, slice 8a): select/plan/move/endturn/state plus
                                                build/recruit/transfer, starting resources, towns and day income; v1: the 7d-L session
   h4tool towns-init <Data-dir> <maps-dir> [--out t.json]
+  h4tool town-scene <Data-dir> --fac F (--terrain N | --bg NAME) --built 0,3,8 --out scene.png [--draw draw.json]
+                                               slice 8b: the 1280x825 town screen of a faction (life|order|death|chaos|nature|might)
+  h4tool town-hits <Data-dir> --fac F (--terrain N | --bg NAME) --built ids --points pts.json --out hits.json
+  h4tool town-terrain-all <Data-dir> <maps-dir> --out towns_terrain.json   terrain id + background of every town
+  h4tool town-check-all <Data-dir> <maps-dir> --out missing.json           every town's layers and thumbnails must exist
+  h4tool town-thumbs-all <Data-dir> --out thumbs.json                      build-dialog thumbnail lookup
                                                initial state of the towns of every map (slice 8a, seed 12345, difficulty 2)
   h4tool play    <Data-dir> --arrows arrows.json  check the path arrow names (and that each exists in the resource store);
                                                prints `arrows: K/N ok, missing M`, exit 0 only if all ok
@@ -570,6 +576,62 @@ do {
         }
         let text = try H4TownsInit.json(dataDirectory: URL(fileURLWithPath: rest[0]), mapsDirectory: URL(fileURLWithPath: rest[1]))
         if let outPath { try Data(text.utf8).write(to: URL(fileURLWithPath: outPath)) } else { FileHandle.standardOutput.write(Data(text.utf8)) }
+
+    case ("town-scene", 1...), ("town-hits", 1...), ("town-terrain-all", 1...), ("town-check-all", 1...), ("town-thumbs-all", 1...):
+        var opts: [String: String] = [:]
+        var positional: [String] = []
+        var g = 0
+        while g < rest.count {
+            if rest[g].hasPrefix("--") {
+                guard g + 1 < rest.count else { fail(usage) }
+                opts[rest[g]] = rest[g + 1]
+                g += 2
+            } else { positional.append(rest[g]); g += 1 }
+        }
+        func write(_ text: String, to path: String) throws { try Data(text.utf8).write(to: URL(fileURLWithPath: path)) }
+        let dataDir = URL(fileURLWithPath: positional[0])
+        switch command {
+        case "town-terrain-all", "town-check-all":
+            guard positional.count == 2, let out = opts["--out"] else { fail(usage) }
+            let maps = URL(fileURLWithPath: positional[1])
+            if command == "town-terrain-all" {
+                try write(try H4TownBatch.terrainAllJSON(dataDirectory: dataDir, mapsDirectory: maps), to: out)
+            } else {
+                let r = try H4TownBatch.checkAllJSON(dataDirectory: dataDir, mapsDirectory: maps)
+                try write(r.json, to: out)
+                print("towns checked: \(r.towns), missing: \(r.missing), ignored bits: \(r.ignored)")
+            }
+        case "town-thumbs-all":
+            guard positional.count == 1, let out = opts["--out"] else { fail(usage) }
+            try write(try H4TownBatch.thumbsAllJSON(dataDirectory: dataDir), to: out)
+        default:
+            guard positional.count == 1, let facName = opts["--fac"], let fac = H4TownRules.factions.firstIndex(of: facName),
+                  let out = opts["--out"] else { fail(usage) }
+            let bg: String
+            if let b = opts["--bg"] { bg = b } else {
+                guard let t = opts["--terrain"].flatMap({ Int($0) }), let n = H4TownRender.backgroundName(terrain: t) else { fail(usage) }
+                bg = n
+            }
+            let built = try (opts["--built"] ?? "").split(separator: ",").map { s -> Int in
+                guard let v = Int(s) else { throw H4Error.malformed("bad building id '\(s)'") }
+                return v
+            }
+            let renderer = H4TownRenderer(store: try H4ResourceStore(dataDirectory: dataDir))
+            if command == "town-scene" {
+                let (image, list) = try renderer.render(faction: fac, background: bg, built: built)
+                try image.pngData().write(to: URL(fileURLWithPath: out))
+                if let d = opts["--draw"] { try write(H4TownBatch.drawListJSON(list), to: d) }
+            } else {
+                guard let pf = opts["--points"],
+                      let raw = try JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: pf))) as? [Any] else { fail(usage) }
+                let points = try raw.map { p -> (x: Int, y: Int) in
+                    if let a = p as? [Int], a.count == 2 { return (a[0], a[1]) }
+                    if let d = p as? [String: Any], let x = d["x"] as? Int, let y = d["y"] as? Int { return (x, y) }
+                    throw H4Error.malformed("point is not [x, y]")
+                }
+                try write(H4TownBatch.hitsJSON(try renderer.hitTest(faction: fac, background: bg, built: built, points: points)), to: out)
+            }
+        }
 
     default:
         fail(usage)
