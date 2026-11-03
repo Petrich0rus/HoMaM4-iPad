@@ -60,7 +60,13 @@ struct MapDetailView: View {
         #if DEBUG
         .onAppear {
             // Developer aid: `-H4NewGame` starts the game of the preselected map at once (difficulty 2, seed field as is).
-            if UserDefaults.standard.bool(forKey: "H4NewGame") { difficulty = 2; showGame = true }
+            // `-H4Seed <n>` and `-H4Difficulty <n>` set the seed and the difficulty of that game.
+            let defaults = UserDefaults.standard
+            if let seed = defaults.string(forKey: "H4Seed") { seedText = seed }
+            if defaults.bool(forKey: "H4NewGame") {
+                difficulty = defaults.object(forKey: "H4Difficulty") == nil ? 2 : defaults.integer(forKey: "H4Difficulty")
+                showGame = true
+            }
         }
         #endif
     }

@@ -8,6 +8,7 @@ struct MapBrowserView: View {
     #if DEBUG
     @State private var touring = false
     @State private var playing = false
+    @State private var townTest = false
     #endif
 
     private var filtered: [MapEntry] {
@@ -35,9 +36,10 @@ struct MapBrowserView: View {
         }
         .onAppear(perform: selectFromLaunchArgument)
         #if DEBUG
-        .onAppear { if AutoTour.isRequested { touring = true } else if AutoPlay.isRequested { playing = true } }
+        .onAppear { if AutoTour.isRequested { touring = true } else if AutoPlay.isRequested { playing = true } else if AutoTown.isRequested { townTest = true } }
         .fullScreenCover(isPresented: $touring) { AutoTourView() }
         .fullScreenCover(isPresented: $playing) { AutoPlayView() }
+        .fullScreenCover(isPresented: $townTest) { AutoTownView() }
         #endif
     }
 }
@@ -45,7 +47,13 @@ struct MapBrowserView: View {
 extension MapBrowserView {
     /// Developer aid: `-H4SelectMap <text>` preselects the first map whose path contains the text.
     func selectFromLaunchArgument() {
-        guard selection == nil, let key = UserDefaults.standard.string(forKey: "H4SelectMap") else { return }
+        guard selection == nil else { return }
+        // `-H4MapPath "<path relative to maps/>"`: exact match, takes precedence over `-H4SelectMap`
+        if let exact = UserDefaults.standard.string(forKey: "H4MapPath"), let entry = library.maps.first(where: { $0.path == exact }) {
+            selection = entry.id
+            return
+        }
+        guard let key = UserDefaults.standard.string(forKey: "H4SelectMap") else { return }
         selection = library.maps.first { $0.path.localizedCaseInsensitiveContains(key) }?.id
     }
 }

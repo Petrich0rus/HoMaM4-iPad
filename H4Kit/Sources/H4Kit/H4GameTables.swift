@@ -436,6 +436,10 @@ public struct H4GameTables: Sendable {
     public let artifactIDByModel: [String: Int]
     /// Dwelling pools per level 1...4 (0x43c080): ids ascending, pirate excluded, dwelling present, expansion <= 2.
     public let dwellingPools: [Int: [Int]]
+    /// Display name and plural name of each creature (columns `Name`, `Plural Name` of table.creatures, in the game's language;
+    /// the keyword when a cell is empty), index = creature id.
+    public private(set) var creatureNames: [String] = []
+    public private(set) var creaturePlurals: [String] = []
 
     public init(store: H4ResourceStore) throws {
         let creatureTable = try H4DataTable(data: store.data(for: "table.creatures.h4d"))
@@ -450,6 +454,8 @@ public struct H4GameTables: Sendable {
             ec = try table.column("Experience")
         let growthColumn = table.columns.firstIndex(of: "Weekly Growth")
         let costColumns = ["Gold", "Wood", "Ore", "Crystal", "Sulfur", "Mercury", "Gems"].map { table.columns.firstIndex(of: $0) }
+        let nameColumn = table.columns.firstIndex(of: "Name"), pluralColumn = table.columns.firstIndex(of: "Plural Name")
+        var displayNames: [String: (name: String, plural: String)] = [:]
         var byKeyword: [String: (level: Int, align: Int, exp: Int, expansion: Int, growth: Int, cost: [Int])] = [:]
         var expansion = 0
         for row in table.rows {
@@ -463,6 +469,7 @@ public struct H4GameTables: Sendable {
                   let exp = Int(row[ec]), exp > 0 else { throw H4Error.malformed("table.creatures row '\(key)'") }
             let growth = growthColumn.flatMap { Int(row[$0]) } ?? 0
             byKeyword[key.lowercased()] = (level, align, exp, expansion, growth, costColumns.map { $0.flatMap { Int(row[$0]) } ?? 0 })
+            displayNames[key.lowercased()] = (nameColumn.map { row[$0] } ?? "", pluralColumn.map { row[$0] } ?? "")
         }
         var list: [Creature] = []
         for (id, name) in names.enumerated() {
@@ -472,6 +479,9 @@ public struct H4GameTables: Sendable {
                                  weeklyGrowth: t.growth, cost: t.cost))
         }
         creatures = list
+        let shownNames = names.map { k in displayNames[k.lowercased()].flatMap { $0.name.isEmpty ? nil : $0.name } ?? k }
+        creatureNames = shownNames
+        creaturePlurals = names.enumerated().map { i, k in displayNames[k.lowercased()].flatMap { $0.plural.isEmpty ? nil : $0.plural } ?? shownNames[i] }
 
         let akeys = H4GameIdentifiers.artifactKeywords
         let akc = try artTable.column("Keyword"), slotc = try artTable.column("Slot"),
@@ -557,6 +567,8 @@ struct H4DataTable {
 public struct H4BuildingTable: Sendable, Equatable {
     /// Per faction: building id -> 7 costs (gold, wood, ore, crystal, sulfur, mercury, gems).
     public let costs: [[Int: [Int]]]
+    /// Per faction: building id -> display name (column `FRENCH` of the table, which holds the game's text in its language).
+    public private(set) var names: [[Int: String]] = []
 
     init(costs: [[Int: [Int]]]) { self.costs = costs }
 
@@ -586,29 +598,43 @@ public struct H4BuildingTable: Sendable, Equatable {
             guard let i = columns.firstIndex(of: name) else { throw H4Error.malformed("table.buildings column '\(name)'") }
             return i
         }
+        let nameColumn = columns.firstIndex(of: "FRENCH")
         var sections: [[String: [Int]]] = []
+        var sectionNames: [[String: String]] = []
         while p < b.count {
             let c = try u16(p); p += 2
             var row: [String] = []
             for _ in 0..<c { row.append(try string(&p)) }
             if row.count == 1 { continue }
             guard row.count == ncol else { throw H4Error.malformed("table.buildings row of \(row.count) strings") }
-            if row[kc].isEmpty { sections.append([:]); continue }
+            if row[kc].isEmpty { sections.append([:]); sectionNames.append([:]); continue }
             guard !sections.isEmpty else { throw H4Error.malformed("table.buildings row before the first faction") }
             sections[sections.count - 1][row[kc]] = cc.map { Int(row[$0]) ?? 0 }
+            if let nc = nameColumn { sectionNames[sectionNames.count - 1][row[kc]] = row[nc] }
         }
         guard sections.count == H4TownRules.keywords.count else { throw H4Error.malformed("table.buildings has \(sections.count) sections") }
         var out: [[Int: [Int]]] = []
+        var displayed: [[Int: String]] = []
         for (f, names) in H4TownRules.keywords.enumerated() {
             var m: [Int: [Int]] = [:]
+            var shown: [Int: String] = [:]
             for (id, kw) in names {
                 guard let cost = sections[f][kw] else { throw H4Error.malformed("table.buildings lacks '\(kw)' (faction \(f))") }
                 m[id] = cost
+                if let n = sectionNames[f][kw], !n.isEmpty { shown[id] = n }
             }
             out.append(m)
+            displayed.append(shown)
         }
         costs = out
+        names = displayed
     }
 
     public func cost(faction: Int, building: Int) -> [Int]? { costs[faction][building] }
+
+    /// Display name of a building (the keyword when the table has no text).
+    public func name(faction: Int, building: Int) -> String {
+        let fallback = H4TownRules.keywords.indices.contains(faction) ? (H4TownRules.keywords[faction][building] ?? "Building \(building)") : "Building \(building)"
+        return names.indices.contains(faction) ? (names[faction][building] ?? fallback) : fallback
+    }
 }

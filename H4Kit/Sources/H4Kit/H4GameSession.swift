@@ -56,6 +56,10 @@ public struct H4PlannedPath: Sendable, Equatable {
     public var days: Int
     /// Arrow model names (`adv_object` models), one per path cell k = 1...N; empty when not ok.
     public var arrows: [String]
+
+    public init(ok: Bool, why: H4SessionWhy?, path: [H4MoveCell], dayOf: [Int], cost: Int, days: Int, arrows: [String]) {
+        self.ok = ok; self.why = why; self.path = path; self.dayOf = dayOf; self.cost = cost; self.days = days; self.arrows = arrows
+    }
 }
 
 /// Result of `move()`.
@@ -70,6 +74,10 @@ public struct H4MoveOutcome: Sendable, Equatable {
     public var spent: Int
     /// v2 ruleset: index of the own town the army entered (it stops on the previous cell and becomes its visitor), if any.
     public var visited: Int? = nil
+
+    public init(ok: Bool, why: H4SessionWhy?, steps: Int, picked: Int?, spent: Int, visited: Int? = nil) {
+        self.ok = ok; self.why = why; self.steps = steps; self.picked = picked; self.spent = spent; self.visited = visited
+    }
 }
 
 /// A pickup object of a level and the cells a plan can end on to collect it.
@@ -86,6 +94,9 @@ public struct H4SessionRenderState: Sendable {
     /// Level and arrows (cell, `adv_object` model name) of the active plan.
     public var arrowLevel = 0
     public var arrows: [(cell: H4MoveCell, model: String)] = []
+    /// Slice 8c, v2 only: object index -> model name of a town whose tier now differs from its tier at the start of the game.
+    /// Empty in a fresh session (towns are drawn with their scenario / resolved model).
+    public var modelOverride: [Int: String] = [:]
     public init() {}
 }
 
@@ -131,6 +142,10 @@ public final class H4GameSession {
     var selected: Int?
     /// Towns, economy and army slots (slice 8a); nil under the v1 ruleset.
     var townWorld: H4TownWorld?
+    /// Resources the town queries of slice 8c read (terrain, start masks); nil under v1 and in synthetic sessions.
+    var townAux: H4TownAux?
+    /// Building mask of every town at the start of the game (v2): the tiers of the map models are compared with it.
+    var townStartMask: [Int: Int] = [:]
     public private(set) var ruleset = H4Ruleset.v1
     private var plannedAnswer: H4MoveAnswer?
     private var worlds: [Int: H4MoveWorld] = [:]
@@ -176,6 +191,8 @@ public final class H4GameSession {
                                         armies: armyStates.mapValues(\.owner), tables: townTables)
             for p in H4TownWorld.players(game: game, scenario: scenario) { resourceStore[p.colour] = H4SessionResources(amounts: p.start) }
             world.clearVisits()
+            townAux = H4TownAux(store: resources, terrain: terrain)
+            townStartMask = world.towns.mapValues(\.mask)
             townWorld = world
             self.ruleset = .v2
         }
@@ -235,6 +252,7 @@ public final class H4GameSession {
             s.arrowLevel = army.level
             s.arrows = zip(a.path.dropFirst(), names).map { ($0, $1) }
         }
+        s.modelOverride = townModelOverrides()
         return s
     }
 
@@ -585,12 +603,16 @@ extension H4GameSession {
         return .obj(rec)
     }
 
+    /// Runs one command given as a script dictionary (rule 7) and returns its log record (rule 8). This is the single entry
+    /// through which a front end changes the game state; `runScript` loops over it.
+    public func execute(command: [String: Any]) throws -> H4LogRecord { H4LogRecord(json: try run(command: command)) }
+
     /// Runs a script (JSON list of commands) and returns the canonical log text (no trailing newline).
     public func runScript(_ data: Data) throws -> String {
         guard let list = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
             throw H4Error.malformed("script is not a JSON list of commands")
         }
-        return H4LogJSON.arr(try list.map { try run(command: $0) }).text
+        return "[" + (try list.map { try execute(command: $0).text }).joined(separator: ",") + "]"
     }
 }
 
@@ -630,4 +652,29 @@ extension H4GameSession {
         if let count { c["count"] = count }
         return townCommand("transfer", c)
     }
+}
+
+/// A log record (rule 8) of one executed command, in the canonical JSON of the script logs.
+public struct H4LogRecord: Sendable {
+    let json: H4LogJSON
+
+    /// Canonical JSON text of the record (what `runScript` joins into the log).
+    public var text: String { json.text }
+
+    /// The record as a Foundation dictionary.
+    public var fields: [String: Any] {
+        (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [String: Any] ?? [:]
+    }
+
+    private var object: [String: H4LogJSON] { if case .obj(let o) = json { return o }; return [:] }
+    public var ok: Bool { if case .bool(let b)? = object["ok"] { return b }; return false }
+    public var why: String? { if case .str(let t)? = object["why"] { return t }; return nil }
+    public func int(_ key: String) -> Int? { if case .int(let v)? = object[key] { return v }; return nil }
+    /// An array of integers, e.g. `day_of`.
+    public func ints(_ key: String) -> [Int]? {
+        guard case .arr(let a)? = object[key] else { return nil }
+        return a.compactMap { if case .int(let v) = $0 { return v }; return nil }
+    }
+    /// Number of elements of an array field (e.g. `path`).
+    public func count(_ key: String) -> Int? { if case .arr(let a)? = object[key] { return a.count }; return nil }
 }

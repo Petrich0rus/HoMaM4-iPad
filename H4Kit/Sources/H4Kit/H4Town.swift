@@ -183,10 +183,20 @@ public enum H4TownRules {
     static let requirements: [[Int: H4Requirement]] = requirementText.map { $0.compactMapValues(H4Requirement.parse) }
 
     /// Whether the bit of building `id` is in the static buildable set of the faction [D 0x894090].
-    static func isStaticBuildable(faction: Int, building id: Int) -> Bool {
+    public static func isStaticBuildable(faction: Int, building id: Int) -> Bool {
         guard (0..<buildingCount).contains(id) else { return false }
         let s = staticBuildable[faction]
         return (Int(s.lo) | Int(s.hi) << 32) >> id & 1 != 0
+    }
+
+    /// Ids shown in the build grid of a faction: the buildings of its static set, ascending (slice 8c).
+    public static func gridBuildings(faction: Int) -> [Int] {
+        (0..<buildingCount).filter { isStaticBuildable(faction: faction, building: $0) }
+    }
+
+    /// Creature id of dwelling building 12...19 of a faction, nil for any other id.
+    public static func dwellingCreature(faction: Int, building id: Int) -> Int? {
+        (12...19).contains(id) && dwellingCreature.indices.contains(faction) ? dwellingCreature[faction][id - 12] : nil
     }
 
     /// Tier of the adventure-map model [D 0x415e40]: castle 3, citadel 2, fort 1, village 0.
@@ -211,11 +221,16 @@ public struct H4SlotStack: Sendable, Equatable {
 public struct H4TownTables: Sendable {
     public let buildings: H4BuildingTable
     public let creatures: [H4GameTables.Creature]
+    /// Display names of the creatures (singular, plural), index = creature id; empty in synthetic tables.
+    public private(set) var creatureNames: [String] = []
+    public private(set) var creaturePlurals: [String] = []
 
     public init(buildings: H4BuildingTable, creatures: [H4GameTables.Creature]) { self.buildings = buildings; self.creatures = creatures }
 
     public init(store: H4ResourceStore, tables: H4GameTables) throws {
         self.init(buildings: try H4BuildingTable(store: store), creatures: tables.creatures)
+        creatureNames = tables.creatureNames
+        creaturePlurals = tables.creaturePlurals
     }
 
     /// Creature, weekly growth and cost of dwelling building `bit` (12...19) of a faction.
@@ -242,6 +257,8 @@ public struct H4TownState: Sendable, Equatable {
     public var stock: [Int]
     public var garrison: [H4SlotStack]
     public var visitingArmy: Int?
+    /// Name given by the map (may be empty); display only, not part of the log.
+    public var name = ""
     /// Treasury of the day computed in pass A and paid in pass B (1/256 gold).
     var pending = 0
 
@@ -391,6 +408,7 @@ struct H4TownWorld {
                 let garrison = t.garrison.map { Self.slots(of: $0, tables: tables) } ?? Array(repeating: .empty, count: Self.slotCount)
                 towns[i] = H4TownState(index: i, className: cls, faction: faction, right: right, owner: owner, mask: built, allowed: allowed,
                                        builtToday: 0, stock: stock, garrison: garrison, visitingArmy: nil)
+                towns[i]!.name = t.name
                 townOrder.append(i)
             } else if cls == "mine" {
                 guard let ty = H4MineState.subclassTypes[o.triple?.subclassName ?? ""] else {
